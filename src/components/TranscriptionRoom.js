@@ -24,6 +24,7 @@ const TranscriptionRoom = ({ roomId }) => {
   const [selectedService, setSelectedService] = useState('');
   const [currentStep, setCurrentStep] = useState('provider'); // 'provider', 'recording', 'transcribing'
   const [isProviderLocked, setIsProviderLocked] = useState(false);
+  const [isAutoScrollEnabled, setIsAutoScrollEnabled] = useState(true);
 
   const cleanupAudioContext = () => {
     try {
@@ -178,7 +179,7 @@ const TranscriptionRoom = ({ roomId }) => {
             />
           </button>
           <button 
-            className={`service-button ${selectedService === 'openai' ? 'active' : ''} 
+            className={`service-button recommended ${selectedService === 'openai' ? 'active' : ''} 
               ${selectedService === 'google' ? 'other-selected' : ''}`}
             onClick={() => {
               setSelectedService('openai');
@@ -186,6 +187,7 @@ const TranscriptionRoom = ({ roomId }) => {
             }}
             disabled={currentStep === 'transcribing'}
           >
+            <div className="recommended-badge">Recommended</div>
             <img 
               src="/images/openai.png" 
               alt="OpenAI"
@@ -283,6 +285,7 @@ const TranscriptionRoom = ({ roomId }) => {
 
   const stopScreenShare = () => {
     try {
+      // Stop screen share stream
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach(track => track.stop());
         screenStreamRef.current = null;
@@ -294,14 +297,26 @@ const TranscriptionRoom = ({ roomId }) => {
       }
       
       cleanupAudioContext();
+      
+      // Reset AI analysis state
+      setIsAiThinking(false);
+      setCurrentSegment({
+        text: '',
+        startTime: null,
+        timeLeft: 20
+      });
+      
+      // Stop transcription and AI processing
       socketRef.current.emit('stop_transcription', roomId);
+      socketRef.current.emit('stop_ai_processing', roomId);
+      
       setIsScreenSharing(false);
       setScreenPreview(null);
       
       // Reset back to step 1
       setIsProviderLocked(false);
       setCurrentStep('provider');
-      setSelectedService(''); // Clear selected service
+      setSelectedService('');
     } catch (error) {
       console.error('Error stopping screen share:', error);
     }
@@ -386,62 +401,80 @@ const TranscriptionRoom = ({ roomId }) => {
     );
   };
 
+  const aiResponsesRef = useRef(null);
+
+  const scrollToBottom = () => {
+    if (isAutoScrollEnabled && aiResponsesRef.current) {
+      aiResponsesRef.current.scrollTop = aiResponsesRef.current.scrollHeight;
+    }
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [aiResponses]);
+
   return (
     <div className="transcription-room">
       <h1 className="app-title">Beta version 3.0</h1>
       <StepIndicator />
       <div className="step-container">
         <ServiceSelector />
-        <div className={`controls-container ${currentStep === 'provider' ? 'locked' : ''}`}>
-          <div className="lock-overlay" style={{ display: currentStep === 'provider' ? 'flex' : 'none' }}>
-            <span className="lock-icon">🔒</span>
-            <p>Please select a provider first</p>
-          </div>
-          
-          <h3>Step 2: Start Recording</h3>
-          <div className="controls">
-            <button 
-              onClick={isScreenSharing ? stopScreenShare : startScreenShare}
-              className={isScreenSharing ? 'stop-screen' : 'start-screen'}
-              disabled={currentStep === 'provider' || !selectedService}
-            >
-              {isScreenSharing ? '⏹ Stop Screen Share' : '🖥 Share Screen/Tab'}
-            </button>
-            
-            {transcripts.length > 0 && (
-              <button 
-                onClick={exportTranscript} 
-                className="export"
-                disabled={transcripts.length === 0}
-              >
-                💾 Export Transcript
-              </button>
-            )}
-          </div>
-        </div>
       </div>
 
       <div className="split-view">
         <div className="left-panel">
-          {screenPreview && (
-            <div className="screen-preview-container">
-              <div className="screen-preview">
-                <video 
-                  ref={node => node && (node.srcObject = screenPreview.srcObject)} 
-                  autoPlay 
-                  muted 
-                />
-              </div>
+          <div className="controls-container">
+            <div className="lock-overlay" style={{ display: currentStep === 'provider' ? 'flex' : 'none' }}>
+              <span className="lock-icon">🔒</span>
+              <p>Please select a provider first</p>
             </div>
-          )}
-          
+            
+            <h3>Step 2: Start Recording</h3>
+            <div className="controls">
+              <button 
+                onClick={isScreenSharing ? stopScreenShare : startScreenShare}
+                className={isScreenSharing ? 'stop-screen' : 'start-screen'}
+                disabled={currentStep === 'provider' || !selectedService}
+              >
+                {isScreenSharing ? '⏹ Stop Screen Share' : '🖥 Share Screen/Tab'}
+              </button>
+              
+              {transcripts.length > 0 && (
+                <button 
+                  onClick={exportTranscript} 
+                  className="export"
+                  disabled={transcripts.length === 0}
+                >
+                  💾 Export Transcript
+                </button>
+              )}
+            </div>
+
+            {screenPreview && (
+              <div className="screen-preview-container">
+                <div className="screen-preview">
+                  <video 
+                    ref={node => node && (node.srcObject = screenPreview.srcObject)} 
+                    autoPlay 
+                    muted 
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+
           <div className="transcription-panel">
             <h2>
               Live Transcription
-              {(isRecording || isScreenSharing) && (
-                <div className="header-status">
+              {(isRecording || isScreenSharing) ? (
+                <div className="header-status recording">
                   <div className="recording-dot"></div>
-                  {isRecording ? 'Recording in progress...' : 'Screen sharing in progress...'}
+                  Screen sharing in progress...
+                </div>
+              ) : (
+                <div className="header-status ready">
+                  <div className="recording-dot"></div>
+                  Ready
                 </div>
               )}
             </h2>
@@ -467,7 +500,20 @@ const TranscriptionRoom = ({ roomId }) => {
         </div>
 
         <div className="ai-response-panel">
-          <h2>AI Analysis</h2>
+          <div className="panel-header">
+            <h2>AI Analysis</h2>
+            <div className="auto-scroll-toggle">
+              <label className="toggle-switch">
+                <input
+                  type="checkbox"
+                  checked={isAutoScrollEnabled}
+                  onChange={(e) => setIsAutoScrollEnabled(e.target.checked)}
+                />
+                <span className="toggle-slider"></span>
+              </label>
+              <span className="toggle-label">Auto Scroll</span>
+            </div>
+          </div>
           <div className="segment-status">
             <div className="status-indicator">
               <div className="progress-bar" style={{ 
@@ -480,7 +526,7 @@ const TranscriptionRoom = ({ roomId }) => {
               )}
             </div>
           </div>
-          <div className="ai-responses">
+          <div className="ai-responses" ref={aiResponsesRef}>
             {aiResponses.length === 0 ? (
               <div className="ai-response">
                 <span className="text">

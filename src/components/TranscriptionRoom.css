@@ -1,3 +1,31 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
+
+:root {
+  --font-primary: 'Space Grotesk', sans-serif;
+  --font-secondary: 'Inter', sans-serif;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap');
+
+:root {
+  --font-primary: 'Outfit', sans-serif;
+  --font-secondary: 'Plus Jakarta Sans', sans-serif;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;500;600;700&family=DM+Sans:wght@400;500;700&display=swap');
+
+:root {
+  --font-primary: 'Syne', sans-serif;
+  --font-secondary: 'DM Sans', sans-serif;
+}
+
+@import url('https://fonts.googleapis.com/css2?family=Cabinet+Grotesk:wght@400;500;600;700&family=Satoshi:wght@400;500;700&display=swap');
+
+:root {
+  --font-primary: 'Cabinet Grotesk', sans-serif;
+  --font-secondary: 'Satoshi', sans-serif;
+}
+
 .transcription-room {
   min-height: 100vh;
   background: linear-gradient(to bottom right, #1a1a2e, #16213e);
@@ -11,83 +39,139 @@
 
 .controls {
   display: flex;
-  gap: 12px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
-  margin: 0;
+  gap: 16px;
   justify-content: center;
   align-items: center;
   width: 100%;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 12px;
+  backdrop-filter: blur(4px);
 }
 
 .controls button {
-  padding: 12px 24px;
+  padding: 14px 28px;
   border: none;
   border-radius: 8px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  gap: 10px;
+  font-size: 1rem;
+  position: relative;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  flex: 1;
+  min-width: 200px;
 }
 
-.controls button.start,
 .controls button.start-screen {
-  background: #4CAF50;
-  color: white;
+  background: linear-gradient(135deg, #00ff87, #60efff);
+  color: #000;
+  box-shadow: 0 4px 15px rgba(0, 255, 135, 0.3);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
 }
 
-.controls button.stop,
+.controls button.start-screen:hover {
+  background: linear-gradient(135deg, #60efff, #00ff87);
+  box-shadow: 0 6px 20px rgba(0, 255, 135, 0.4);
+}
+
 .controls button.stop-screen {
-  background: #f44336;
+  background: linear-gradient(135deg, #ff0f7b, #f89b29);
   color: white;
+  box-shadow: 0 4px 15px rgba(255, 15, 123, 0.3);
+}
+
+.controls button.stop-screen:hover {
+  background: linear-gradient(135deg, #f89b29, #ff0f7b);
+  box-shadow: 0 6px 20px rgba(255, 15, 123, 0.4);
 }
 
 .controls button.export {
-  background: #2196F3;
+  background: linear-gradient(135deg, #00c6ff, #0072ff);
   color: white;
+  box-shadow: 0 4px 15px rgba(0, 198, 255, 0.3);
 }
 
-.controls button:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+.controls button.export:hover {
+  background: linear-gradient(135deg, #0072ff, #00c6ff);
+  box-shadow: 0 6px 20px rgba(0, 198, 255, 0.4);
 }
 
 .controls button:disabled {
-  background: #666;
+  background: linear-gradient(135deg, #2a2a2a, #1a1a1a);
+  color: rgba(255, 255, 255, 0.3);
+  box-shadow: none;
   cursor: not-allowed;
-  transform: none;
+}
+
+.controls button::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    120deg,
+    transparent,
+    rgba(255, 255, 255, 0.2),
+    transparent
+  );
+  transition: 0.5s;
+}
+
+.controls button:hover::before {
+  left: 100%;
+}
+
+.controls button:active {
+  transform: translateY(1px);
+  box-shadow: none;
+}
+
+@keyframes buttonPulse {
+  0% { opacity: 0.8; }
+  50% { opacity: 1; }
+  100% { opacity: 0.8; }
+}
+
+.controls button.stop-screen {
+  animation: buttonPulse 2s infinite;
 }
 
 .split-view {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  grid-template-rows: auto 1fr;
   gap: 24px;
   height: calc(100vh - 250px);
 }
 
 .left-panel {
   grid-column: 1;
-  grid-row: 1 / span 2;
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
+  max-height: 100%;
+  overflow: hidden;
 }
 
 .screen-preview-container {
   width: 100%;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 12px;
+  max-width: 400px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
   overflow: hidden;
-  border: 1px solid rgba(255, 174, 66, 0.2);
-  height: 300px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  margin: 16px auto;
+  aspect-ratio: 16 / 9;
+  flex-shrink: 0;
+  border: 1px solid rgba(255, 174, 66, 0.1);
 }
 
 .screen-preview {
@@ -97,17 +181,15 @@
   align-items: center;
   justify-content: center;
   background: rgba(0, 0, 0, 0.2);
-  padding: 16px;
+  padding: 8px;
 }
 
 .screen-preview video {
-  max-width: 100%;
-  max-height: 100%;
-  width: auto;
-  height: auto;
+  width: 100%;
+  height: 100%;
   object-fit: contain;
-  border-radius: 8px;
-  box-shadow: 0 0 20px rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  background: transparent;
 }
 
 .transcription-panel {
@@ -115,6 +197,12 @@
   min-height: 0;
   display: flex;
   flex-direction: column;
+  background: rgba(20, 23, 34, 0.7);
+  border: 1px solid rgba(255, 174, 66, 0.2);
+  box-shadow: 0 0 20px rgba(255, 174, 66, 0.1);
+  padding: 20px;
+  border-radius: 12px;
+  overflow: hidden;
 }
 
 .ai-response-panel {
@@ -134,8 +222,11 @@
 
 .transcripts {
   flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 8px;
   min-height: 0;
-  max-height: none;
 }
 
 .transcription-panel h2,
@@ -314,14 +405,11 @@ html, body, #root {
 .controls {
   display: flex;
   gap: 12px;
-  padding: 16px;
-  background: rgba(255, 255, 255, 0.05);
-  border-radius: 12px;
-  backdrop-filter: blur(10px);
-  margin: 0;
   justify-content: center;
   align-items: center;
   width: 100%;
+  padding: 0;
+  background: transparent;
 }
 
 /* Optional: If you want to constrain the width of the button group */
@@ -392,53 +480,70 @@ html, body, #root {
 
 /* Style for the header status */
 .header-status {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 0.9rem;
-  color: #f44336;
-  background: rgba(244, 67, 54, 0.1);
-  padding: 4px 8px;
-  border-radius: 4px;
+  padding: 6px 12px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 20px;
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
 }
 
-.header-status .recording-dot {
+/* Recording dot animation */
+.recording-dot {
   width: 8px;
   height: 8px;
-  margin: 0;
+  background: #4CAF50;
+  border-radius: 50%;
+  position: relative;
+  display: inline-block;
+  animation: pulse 2s infinite;
 }
 
-/* Update the header area of transcription panel */
-.transcription-panel h2 {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin: 0 0 16px 0;
-  padding-bottom: 12px;
-  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+/* Ready state styles */
+.header-status.ready {
+  background: rgba(76, 175, 80, 0.15);
+  border: 1px solid rgba(76, 175, 80, 0.3);
+  color: #4CAF50;
 }
 
-/* Style for the header status */
-.header-status {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 0.9rem;
+.header-status.ready .recording-dot {
+  background: #4CAF50;
+  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
+}
+
+/* Recording state styles */
+.header-status.recording {
+  background: rgba(244, 67, 54, 0.15);
+  border: 1px solid rgba(244, 67, 54, 0.3);
   color: #f44336;
-  background: rgba(244, 67, 54, 0.1);
-  padding: 4px 8px;
-  border-radius: 4px;
 }
 
-.header-status .recording-dot {
-  width: 8px;
-  height: 8px;
-  margin: 0;
+.header-status.recording .recording-dot {
+  background: #f44336;
+  box-shadow: 0 0 0 2px rgba(244, 67, 54, 0.2);
 }
 
-/* Remove the old recording indicator since we moved it */
-.recording-indicator {
-  display: none;
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.7);
+  }
+  50% {
+    transform: scale(1);
+    opacity: 0.8;
+    box-shadow: 0 0 0 4px rgba(76, 175, 80, 0);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(76, 175, 80, 0);
+  }
 }
 
 .app-title {
@@ -528,16 +633,20 @@ html, body, #root {
 .step-container {
   display: flex;
   flex-direction: column;
-  gap: 24px;
+  gap: 16px;
   position: relative;
+  margin-bottom: 16px;
 }
 
 .controls-container {
   position: relative;
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(20, 23, 34, 0.7);
+  border: 1px solid rgba(255, 174, 66, 0.2);
+  box-shadow: 0 0 20px rgba(255, 174, 66, 0.1);
   border-radius: 12px;
   padding: 20px;
-  backdrop-filter: blur(10px);
+  margin-bottom: 16px;
+  flex-shrink: 0;
 }
 
 .lock-overlay {
@@ -892,5 +1001,284 @@ html, body, #root {
   background: rgba(255, 255, 255, 0.3);
   border: 2px solid transparent;
   background-clip: padding-box;
+}
+
+/* Update step-container spacing */
+.step-container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: relative;
+  margin-bottom: 16px;
+}
+
+/* Update split-view top spacing */
+.split-view {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 24px;
+  height: calc(100vh - 200px);
+}
+
+/* Ensure controls-container in left-panel has proper spacing */
+.left-panel .controls-container {
+  position: relative;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 16px;
+  backdrop-filter: blur(10px);
+  margin-bottom: 16px;
+  flex-shrink: 0;
+}
+
+/* Update controls styling */
+.controls {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+}
+
+/* Update button styling */
+.controls button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  backdrop-filter: blur(10px);
+}
+
+.controls button.start-screen {
+  background: #4CAF50;
+  color: white;
+  flex: 1;
+  justify-content: center;
+}
+
+.controls button.stop-screen {
+  background: #f44336;
+  color: white;
+  flex: 1;
+  justify-content: center;
+}
+
+.controls button.export {
+  background: #2196F3;
+  color: white;
+  flex: 1;
+  justify-content: center;
+}
+
+/* Update heading style */
+.controls-container h3 {
+  color: #ffaf42;
+  margin: 0 0 16px 0;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 174, 66, 0.2);
+  font-size: 1.1rem;
+}
+
+/* Apply the fonts to your elements */
+.app-title {
+  font-family: var(--font-primary);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.controls button {
+  font-family: var(--font-primary);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+h2, h3 {
+  font-family: var(--font-primary);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.transcripts, 
+.ai-responses,
+.status-indicator,
+.step-label {
+  font-family: var(--font-secondary);
+}
+
+/* Additional Typography Enhancements */
+.controls button {
+  font-size: 0.9rem;
+  letter-spacing: 0.05em;
+}
+
+.app-title {
+  font-size: 1.75rem;
+  letter-spacing: -0.03em;
+}
+
+.transcription-panel h2,
+.ai-response-panel h2 {
+  font-size: 1.4rem;
+  letter-spacing: -0.02em;
+}
+
+.controls-container h3 {
+  font-size: 1.1rem;
+  letter-spacing: 0.01em;
+}
+
+.step-label {
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+}
+
+/* Status text styling */
+.status-indicator span {
+  font-size: 0.9rem;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* Transcript text styling */
+.sentence {
+  font-size: 1rem;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+}
+
+/* Panel header with auto-scroll toggle */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding-bottom: 12px;
+  border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+}
+
+.auto-scroll-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toggle-label {
+  font-size: 0.85rem;
+  color: #fff;
+  opacity: 0.8;
+}
+
+/* Toggle switch styling */
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.2);
+  transition: 0.4s;
+  border-radius: 20px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: 0.4s;
+  border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+  background-color: #4CAF50;
+}
+
+input:checked + .toggle-slider:before {
+  transform: translateX(20px);
+}
+
+/* Optional: Add hover effect */
+.toggle-switch:hover .toggle-slider {
+  background-color: rgba(255, 255, 255, 0.3);
+}
+
+.toggle-switch:hover input:checked + .toggle-slider {
+  background-color: #45a049;
+}
+
+.ai-response-panel h2 {
+  color: #ffaf42;
+  margin: 0;
+  padding: 0;
+}
+
+.ai-responses {
+  scroll-behavior: smooth;
+}
+
+/* Add these styles for the recommended badge */
+.service-button {
+  /* ... existing styles ... */
+  position: relative;
+}
+
+.recommended-badge {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  background: #00DC82;
+  color: #000;
+  padding: 2px 8px;
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  z-index: 2;
+  transform: none;
+  border-radius: 4px;
+  box-shadow: none;
+  animation: none;
+}
+
+.service-button.recommended {
+  box-shadow: none;
+  border: 2px solid #00DC82;
+}
+
+.service-button.recommended:hover {
+  box-shadow: none;
+  border: 2px solid #00DC82;
+}
+
+@keyframes badgePulse {
+  0%, 50%, 100% {
+    transform: none;
+  }
 }
   
