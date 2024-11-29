@@ -1,0 +1,77 @@
+mkdir transcription-app
+cd transcription-app
+
+# Create server directory
+mkdir server
+cd server
+npm init -y
+npm install express socket.io @google-cloud/speech cors dotenv axios
+npm install ws
+
+# Create client directory
+cd ..
+npx create-react-app client
+npm install socket.io-client file-saver
+
+# Terminal 1 - Start the server
+cd ~/Desktop/APPboy/meeting-transcriber/server
+node index.js
+
+# Terminal 2 - Start the client
+cd client
+npm start
+
+# Find the process using port 5000
+netstat -ano | findstr :5000
+
+# Kill the process (replace <PID> with the process ID)
+taskkill /PID <PID> /F
+
+# Set the GOOGLE_API_KEY environment variable
+echo "GOOGLE_API_KEY=AIzaSyCUFcqxfA8DpES1Hpvr13zFM9iENCWmrdE" > .env
+
+# Create .env file with the Meeting Transcriber project details
+cat > .env << EOL
+GOOGLE_PROJECT_ID="meeting-trans-443019"
+GOOGLE_CLIENT_EMAIL="speech@meeting-trans-443019.iam.gserviceaccount.com"
+GOOGLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvwIBADANBgkqhkiG9w0BAQEFAASCBKkwggSlAgEAAoIBAQDzq+3Oz6L8HCWJ\npAU8cn186zV6/lCV5uI05PYnURV3G19gOlqGgkvPxydi1aTojWdorl1+mCxxNdQK\neyy0FfeMr2PSttmgQw/l1Mcl+YGXb1bvmKJqY5bxxImxzmsQBF9rNzxkho3xaHD1\nETl3l6HpYYZBbzqNYshL0LxFeXD1sYQATmCd/VCo/w8+p2mqXgFObew6g2k6JZ2G\ns79v4/88DvV0awqF9e9kkDG05LQSo/ZpR4d9Vbh+MDNzipzxUL6M4p78BrjADjcs\nqFnYPWV3O4aoiu28iYvM5SW2UvbGXhPNHsd/EDE/kpdpWtic/8LZ+D2hNSi89Ed8\n9L9hn8HvAgMBAAECggEAQLHNGbOXGkh+zuR1X28mUhxAvr72tlXuiQyhLh8hC9aA\npBPaJQxDBI9jraH7fqLMacahnBLa+dPI0F+TptyONRP79N4HOb2UYvjzRunPtl0h\nP8vOk2CNmvMLe+HKGx6OFvE7X5U56nZIR0ijcVUY79Wsx4K4kQFBHJ/23Js5moFa\nYp9ZvKvCfM/u/jTM2u4azhcU5c2klwwK/mJjhI4/1oCY1EhC+4RNV017bjxRLgEN\n7Ln9iqNECvKw3fBd88gDhQ9UM0tYpIASkTogGyhW/kyxsjBLChxTive45VPE/kcx\n/6v3pCeTIHgsWl2UdN62Xo6y5Eq+tcqYZgkyMSU6gQKBgQD6v/ultPrIqJsCD28n\nH4lCQknFCJr1n9arWttkM8twSxzvtWL4B8IvGoatZkJtylNUO19uLTt7DE4yrhpe\nVeIqnS5hhXkFFqZ59ZU4mygpZBS3iID9pyDLlbZh/YrpjI95PBPxhRaZSCN3p68P\nPds9eMsVC3nQs3j6tzYrGxiItwKBgQD4xgGR5Bpv3Ue/Sy1EyFhelqXQ2R+8ZAnx\nben7y24P/Uww/QtC0APVikKt6y4csyednyLqhHe20i5VvgFQFWZ3fueKDEariuj9\nG5TRH8TQKbIq1K5KFvLZS9mcGZSzJ4ByNjT7o5gHqg5NgUKUQJyHTZA92ESKDVi4\n7jXOnu4oiQKBgQCVo1hDrVszwBqxAhDtIg7BcdmgMeB30GlFXTUr+RTg8JJWIsLr\nDYY+oe/ZLvtZlbJgxAXRNEEYz2EjMW8e+NW9ZIu3OvXbqYazpXDllQJEoSsT0+xW\ncxRJKhDrLWlmsrE0QjwMl8XCt6Ai2fjIebuKVbmr12tctp3t0MQMuWDMxQKBgQD2\nCV6kGyTKXd8HoiIzVLGRWwzDcPmiKI5s6HfxP1CrH6irCpiIi5I/L26i82W3nLgh\ne7HcnwaHGXgZ9MD3ozKkHC6CqYF7RvcG3LBh4zmTZql/ErkNLYUgw5OEfwhB519x\nlYrxFOrXKajbnmtqlDw61MtDXxDqOCj3PSCaKTUBgQKBgQDBDTeoBRdlg513o5o9\nx15k07EFWn0rz7agx3rujB7m0XXDk/eUm9LQNPRUfqD69HB//9fj/JD3uUNHs6sg\nazRNx8wIptd14nZbSVf+WZNn1dDAARQHtxvDcAZLMl6O2lmFFP5+mJZ3B7D2N7Ff\naLmHa3pIKHst8Pw5Ilq2h5m5aQ==\n-----END PRIVATE KEY-----\n"
+EOL
+
+# Install dependencies
+npm install @google-cloud/speech
+
+# Move credentials to credentials directory
+cd server
+mkdir credentials
+mv key.json credentials/
+mv meeting-trans-443019-44d9f75ce2eb.json credentials/key.json
+
+# Add credentials directory to .gitignore
+echo "server/credentials/" >> .gitignore
+
+tree
+# Should show:
+.
+├── client/
+│   └── [client files...]
+└── server/
+    ├── credentials/
+    │   └── key.json
+    ├── index.js
+    ├── package.json
+    └── .env
+
+# Go to your project root
+cd ~/Desktop/APPboy/meeting-transcriber
+
+# Check if directories exist
+ls -la
+
+# If not, create them
+mkdir -p server
+cd server
+
+# Copy your key.json to server directory
+cp "/Users/aliyevom/Library/Mobile Documents/com~apple~CloudDocs/OA/meeting-trans-443019-44d9f75ce2eb.json" ./key.json
+
+# Update index.js to use absolute path

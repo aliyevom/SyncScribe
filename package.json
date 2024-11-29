@@ -1,0 +1,24 @@
+{
+  "name": "meeting-transcriber",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@google-cloud/speech": "^6.7.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.1",
+    "file-saver": "^2.0.5",
+    "pdfmake": "^0.2.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "socket.io": "^4.8.1",
+    "socket.io-client": "^4.8.1",
+    "webrtc-adapter": "^9.0.1"
+  }
+}
