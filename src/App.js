@@ -1,23 +1,16 @@
-import logo from './logo.svg';
+import React from 'react';
+import TranscriptionRoom from './components/TranscriptionRoom';
 import './App.css';
 
 function App() {
+  React.useEffect(() => {
+    document.title = 'Beta version 2.0';
+  }, []);
+
   return (
     <div className="App">
-      <header className="App-header">
-        <img src={logo} className="App-logo" alt="logo" />
-        <p>
-          Edit <code>src/App.js</code> and save to reload.
-        </p>
-        <a
-          className="App-link"
-          href="https://reactjs.org"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          Learn React
-        </a>
-      </header>
+     
+      <TranscriptionRoom roomId="demo-room" />
     </div>
   );
 }
