@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react';
 import io from 'socket.io-client';
 import { saveAs } from 'file-saver';
 import './TranscriptionRoom.css';
+import AIResponse from './AIResponse';
 
 const TranscriptionRoom = ({ roomId }) => {
   const [transcripts, setTranscripts] = useState([]);
@@ -213,6 +214,11 @@ const TranscriptionRoom = ({ roomId }) => {
           sampleRate: 44100,
           channelCount: 1
         }
+      }).catch(error => {
+        if (error.name === 'NotAllowedError') {
+          throw new Error('Please select a tab to complete step 2');
+        }
+        throw error;
       });
 
       const videoTrack = stream.getVideoTracks()[0];
@@ -415,7 +421,10 @@ const TranscriptionRoom = ({ roomId }) => {
 
   return (
     <div className="transcription-room">
-      <h1 className="app-title">Beta version 3.0</h1>
+      <div className="floating-element"></div>
+      <div className="floating-element"></div>
+      <div className="floating-element"></div>
+      <h1 className="app-title">Beta version 4.0</h1>
       <StepIndicator />
       <div className="step-container">
         <ServiceSelector />
@@ -535,22 +544,10 @@ const TranscriptionRoom = ({ roomId }) => {
               </div>
             ) : (
               aiResponses.map((response, index) => (
-                <div 
+                <AIResponse 
                   key={index} 
-                  className={`ai-response ${response.isError ? 'error' : ''} ${response.isMock ? 'mock' : ''}`}
-                >
-                  {response.context && (
-                    <div className="context">
-                      <div className="context-label">Analyzed Conversation:</div>
-                      <div className="context-text">{response.context}</div>
-                    </div>
-                  )}
-                  <div className="analysis">
-                    <div className="analysis-label">AI Analysis:</div>
-                    <div className="analysis-text">{response.text}</div>
-                  </div>
-                  {response.isMock && <span className="mock-indicator">Demo Mode</span>}
-                </div>
+                  text={response.text}
+                />
               ))
             )}
             {isAiThinking && (

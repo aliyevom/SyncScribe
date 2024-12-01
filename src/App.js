@@ -4,7 +4,7 @@ import './App.css';
 
 function App() {
   React.useEffect(() => {
-    document.title = 'Beta version 2.0';
+    document.title = 'SyncScribe';
   }, []);
 
   return (
