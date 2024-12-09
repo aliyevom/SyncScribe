@@ -1,12 +1,13 @@
 pipeline {
     agent any
     tools {
-        maven 'Maven 3.9.6'
+        maven 'Maven 3.9.6' 
+        nodejs 'NodeJS 18.x' 
     }
     stages {
-        stage("Server install package") {
+        stage("Install Packages") {
             steps {
-                echo 'Installing package in Sync!'
+                echo 'Installing npm packages...'
                 sh 'npm install'
             }
         }
