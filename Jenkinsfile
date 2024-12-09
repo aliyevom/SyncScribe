@@ -1,14 +1,10 @@
 pipeline{
-    agent{
-        docker{
-            image "python:3.9"
-        }
-    }
+    agent any
 
     stages{
         stage("Test"){
             steps{
-                sh  "pip --version"
+                sh  "print 'Hello World' "
             }
         }
     }
