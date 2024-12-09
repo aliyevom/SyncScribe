@@ -2,7 +2,7 @@ pipeline {
     agent any
     tools {
         maven 'Maven 3.9.6' 
-        nodejs 'NodeJS 18.x' 
+        nodejs 'NodeJS 23.x'
     }
     stages {
         stage("Install Packages") {
