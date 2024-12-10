@@ -37,7 +37,7 @@ npm install'''
         stage('Artifact package') {
           steps {
             sh 'npm pack'
-            archiveArtifacts 'client-*.tgz'
+            archiveArtifacts 'client/client-*.tgz'
           }
         }
 
