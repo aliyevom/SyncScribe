@@ -3,9 +3,13 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
   "dependencies": {
     "@google-cloud/speech": "^6.7.0",
     "axios": "^1.7.8",
@@ -13,15 +17,23 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.1",
     "fs": "^0.0.1-security",
+    "node-fetch": "^2.7.0",
     "openai": "^4.73.1",
     "os": "^0.1.2",
     "path": "^0.12.7",
+    "prism-react-renderer": "^2.4.0",
+    "react-markdown": "^9.0.1",
+    "react-router-dom": "^7.0.2",
+    "remark-gfm": "^4.0.0",
     "socket.io": "^4.8.1",
+    "stream": "^0.0.2",
+    "util": "^0.12.5",
     "wav": "^1.0.2",
     "ws": "^8.18.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.7",
     "worklet-loader": "^2.0.0"
-  }
+  },
+  "description": ""
 }
