@@ -5,6 +5,8 @@ const fs = require('fs');
 const os = require('os');
 const { Readable } = require('stream');
 const wav = require('wav');
+const { promisify } = require('util');
+const writeFileAsync = promisify(fs.writeFile);
 
 // Initialize Google Speech client
 const googleSpeechClient = new speech.SpeechClient({
@@ -99,34 +101,55 @@ const createGoogleStream = (socket, roomId) => {
 // Function to process audio with OpenAI
 const processWithOpenAI = async (audioBuffer) => {
   try {
-    // Convert the audio buffer to WAV format
-    const wavBuffer = await convertToWav(audioBuffer);
-
-    // Create a temporary WAV file
-    const tempFilePath = path.join(os.tmpdir(), `audio-${Date.now()}.wav`);
-    fs.writeFileSync(tempFilePath, wavBuffer);
-
-    // Create a File object from the temporary file
-    const file = fs.createReadStream(tempFilePath);
-
-    // Process with OpenAI
-    const response = await openai.audio.transcriptions.create({
-      file: file,
-      model: "whisper-1",
-      language: "en",
-      response_format: "json",
-      temperature: 0.2
+    const tempDir = process.env.TEMP_AUDIO_DIR;
+    const tempFile = path.join(tempDir, `audio-${Date.now()}.wav`);
+    
+    // Convert audio buffer to WAV format
+    const wavWriter = new wav.Writer({
+      channels: 1,
+      sampleRate: 16000,
+      bitDepth: 16
     });
 
-    // Clean up the temporary file
-    fs.unlinkSync(tempFilePath);
+    // Create readable stream from audio buffer
+    const bufferStream = new Readable();
+    bufferStream.push(audioBuffer);
+    bufferStream.push(null);
 
-    return {
-      text: response.text,
-      isFinal: true,
-      service: 'openai',
-      timestamp: new Date().toISOString()
-    };
+    // Create write stream for temp file
+    const fileStream = fs.createWriteStream(tempFile);
+
+    // Pipe the audio through WAV converter to file
+    await new Promise((resolve, reject) => {
+      bufferStream
+        .pipe(wavWriter)
+        .pipe(fileStream)
+        .on('finish', resolve)
+        .on('error', reject);
+    });
+
+    try {
+      // Process with OpenAI
+      const response = await openai.audio.transcriptions.create({
+        file: fs.createReadStream(tempFile),
+        model: "whisper-1",
+        response_format: "json"
+      });
+      
+      return {
+        text: response.text,
+        isFinal: true
+      };
+    } finally {
+      // Clean up temp file
+      try {
+        if (fs.existsSync(tempFile)) {
+          fs.unlinkSync(tempFile);
+        }
+      } catch (cleanupError) {
+        console.warn('Error cleaning up temp file:', cleanupError);
+      }
+    }
   } catch (error) {
     console.error('OpenAI Speech recognition error:', error);
     throw error;
@@ -138,7 +161,6 @@ module.exports = {
   openai,
   createGoogleStream,
   processWithOpenAI,
-  convertToWav,
   googleSpeechConfig,
   openAISpeechConfig
 }; 
