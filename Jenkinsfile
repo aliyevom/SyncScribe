@@ -27,8 +27,9 @@ npm install'''
 
         stage('Ui Artifact package') {
           steps {
-            sh 'npm pack'
+            sh 'cd client && npm pack'
             sh 'cd client && ls -la'
+            archiveArtifacts 'client-*.tgz'
           }
         }
 
