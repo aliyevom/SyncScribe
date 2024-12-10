@@ -28,7 +28,7 @@ npm install'''
         stage('Ui Artifact package') {
           steps {
             sh 'npm pack'
-            sh 'ls -la'
+            sh 'cd && ls -la'
           }
         }
 
