@@ -8,19 +8,31 @@ pipeline {
       }
     }
 
-    stage('Package testing') {
-      steps {
-        sh '''ls -la
-'''
-        sh 'npm test'
-      }
-    }
-
-    stage('Artifact package') {
+    stage('Backend Artifact package') {
       steps {
         sh '''npm pack
 '''
         archiveArtifacts 'meeting-transcriber-*.tgz'
+      }
+    }
+
+    stage('Frontend UI') {
+      parallel {
+        stage('Frontend UI') {
+          steps {
+            sh '''cd client
+npm install'''
+          }
+        }
+
+        stage('Ui Artifact package') {
+          steps {
+            sh 'cd client && npm pack'
+            sh 'cd client && ls -la'
+            archiveArtifacts 'client/client-*.tgz'
+          }
+        }
+
       }
     }
 
