@@ -1,4 +1,4 @@
 [submodule "client"]
-    path = client
-    url = https://github.com/aliyevom/Sync-client
-    branch = master
+	path = client
+	url = https://github.com/aliyevom/Sync-client
+	branch = master
