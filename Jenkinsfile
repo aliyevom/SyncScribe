@@ -16,18 +16,17 @@ pipeline {
       }
     }
 
-    stage('Frontend UI') {
-      parallel {
-        stage('Frontend UI Installation') {
-          steps {
-            echo 'Cloning and installing frontend...'
-            sh '''
-              git clone https://github.com/aliyevom/Sync-client.git client
-              cd client
-              npm install
-            '''
-          }
-        }
+stage('Frontend UI') {
+    steps {
+        echo 'Cloning frontend repository and installing dependencies...'
+        sh '''
+            rm -rf client
+            git clone https://github.com/aliyevom/Sync-client.git client
+            cd client
+            npm install
+        '''
+    }
+}
 
         stage('UI Artifact Package') {
           steps {
@@ -35,10 +34,6 @@ pipeline {
             sh '''
               cd client
               npm pack
-            '''
-            echo 'Listing artifacts...'
-            sh '''
-              cd client
               ls -la
             '''
             archiveArtifacts artifacts: 'client/client-*.tgz', onlyIfSuccessful: true
