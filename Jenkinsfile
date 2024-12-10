@@ -21,7 +21,6 @@ pipeline {
         stage('Frontend UI') {
           steps {
             sh '''cd client
-git clone https://github.com/aliyevom/Sync-client.git .
 npm install'''
           }
         }
