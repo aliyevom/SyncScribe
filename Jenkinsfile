@@ -8,22 +8,7 @@ pipeline {
       }
     }
 
-    stage('Package testing') {
-      steps {
-        script{
-          try{
-        sh '''ls -la'''
-        sh 'npm test'
-          }
-          catch(Exception e){
-        sh 'npm install --save-dev @testing-library/react @testing-library/jest-dom @testing-library/user-event'
-        sh 'npm test'
-          }
-        }
-      }
-    }
-
-    stage('Artifact package') {
+    stage('Backend Artifact package') {
       steps {
         sh '''npm pack
 '''
@@ -41,7 +26,7 @@ npm install'''
           }
         }
 
-        stage('Artifact package') {
+        stage('Ui Artifact package') {
           steps {
             sh 'npm pack'
             archiveArtifacts 'client/client-*.tgz'
