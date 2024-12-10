@@ -73,4 +73,4 @@ logs
 
 # dotenv environment variable files
 .env*
-!.env.example 
+!.env.example server/key.json
