@@ -29,7 +29,7 @@ npm install'''
           steps {
             sh 'cd client && npm pack'
             sh 'cd client && ls -la'
-            archiveArtifacts 'client-*.tgz'
+            archiveArtifacts 'client/client-*.tgz'
           }
         }
 
