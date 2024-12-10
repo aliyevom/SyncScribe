@@ -3,39 +3,49 @@ pipeline {
   stages {
     stage('Install Packages') {
       steps {
-        echo 'Installing npm packages...'
+        echo 'Installing npm packages for backend...'
         sh 'npm install'
       }
     }
 
     stage('Backend Artifact package') {
       steps {
-        sh '''npm pack
-'''
-        archiveArtifacts 'meeting-transcriber-*.tgz'
+        echo 'Packaging backend...'
+        sh 'npm pack'
+        archiveArtifacts artifacts: 'meeting-transcriber-*.tgz', onlyIfSuccessful: true
       }
     }
 
     stage('Frontend UI') {
       parallel {
-        stage('Frontend UI') {
+        stage('Frontend UI Installation') {
           steps {
-            sh '''cd client
-npm install'''
+            echo 'Cloning and installing frontend...'
+            sh '''
+              git clone https://github.com/aliyevom/Sync-client.git client
+              cd client
+              npm install
+            '''
           }
         }
 
-        stage('Ui Artifact package') {
+        stage('UI Artifact Package') {
           steps {
-            sh 'cd client && npm pack'
-            sh 'cd client && ls -la'
-            archiveArtifacts 'client/client-*.tgz'
+            echo 'Packaging frontend...'
+            sh '''
+              cd client
+              npm pack
+            '''
+            echo 'Listing artifacts...'
+            sh '''
+              cd client
+              ls -la
+            '''
+            archiveArtifacts artifacts: 'client/client-*.tgz', onlyIfSuccessful: true
           }
         }
-
       }
     }
-
   }
   tools {
     maven 'Maven 3.9.6'
@@ -45,14 +55,11 @@ npm install'''
     always {
       echo 'Pipeline execution completed.'
     }
-
     success {
       echo 'Build succeeded!'
     }
-
     failure {
       echo 'Build failed. Please check the logs.'
     }
-
   }
 }
