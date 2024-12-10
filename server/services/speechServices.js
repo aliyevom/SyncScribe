@@ -138,6 +138,7 @@ module.exports = {
   openai,
   createGoogleStream,
   processWithOpenAI,
+  convertToWav,
   googleSpeechConfig,
   openAISpeechConfig
 }; 
