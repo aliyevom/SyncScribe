@@ -16,6 +16,14 @@ pipeline {
       }
     }
 
+    stage('Artifact package') {
+      steps {
+        sh '''npm pack
+'''
+        archiveArtifacts 'meeting-transcriber-*.tgz'
+      }
+    }
+
   }
   tools {
     maven 'Maven 3.9.6'
