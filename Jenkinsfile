@@ -24,6 +24,26 @@ pipeline {
       }
     }
 
+    stage('Frontend UI') {
+      parallel {
+        stage('Frontend UI') {
+          steps {
+            sh '''cd client
+git clone https://github.com/aliyevom/Sync-client.git .
+npm install'''
+          }
+        }
+
+        stage('Artifact package') {
+          steps {
+            sh 'npm pack'
+            archiveArtifacts 'client-*.tgz'
+          }
+        }
+
+      }
+    }
+
   }
   tools {
     maven 'Maven 3.9.6'
