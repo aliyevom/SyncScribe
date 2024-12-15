@@ -8,7 +8,6 @@ const wav = require('wav');
 const { promisify } = require('util');
 const writeFileAsync = promisify(fs.writeFile);
 
-// Initialize Google Speech client
 const googleSpeechClient = new speech.SpeechClient({
   keyFilename: path.join(__dirname, '../key.json')
 });
