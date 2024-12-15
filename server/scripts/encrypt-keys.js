@@ -5,7 +5,7 @@ const encryptionService = require('../services/encryptionService');
 
 const encryptApiKeys = () => {
   try {
-    // Check if required environment variables are present
+  
     const requiredEnvVars = [
       'OPENAI_API_KEY',
       'OPENAI_ORG_ID',

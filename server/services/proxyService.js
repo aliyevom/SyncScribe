@@ -14,7 +14,7 @@ class ProxyService {
   }
 
   startDecoyRequests() {
-    // Make decoy requests at random intervals between 3-7 seconds
+    // decoy
     const getRandomInterval = () => Math.floor(Math.random() * 4000) + 3000;
     
     const scheduleNext = () => {

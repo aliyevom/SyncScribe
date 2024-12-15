@@ -22,7 +22,7 @@ const io = new Server(server, {
   }
 });
 
-// Initialize the Speech-to-Text client with encrypted credentials
+
 const speechClient = new speech.SpeechClient(credentialService.getGoogleConfig());
 
 // Initialize OpenAI client with encrypted credentials

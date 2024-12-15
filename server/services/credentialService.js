@@ -4,7 +4,7 @@ const path = require('path');
 
 class CredentialService {
   constructor() {
-    // Load encrypted credentials
+    
     dotenv.config({ path: path.join(__dirname, '..', '.env.secure') });
     this.credentials = this.decryptCredentials();
   }
