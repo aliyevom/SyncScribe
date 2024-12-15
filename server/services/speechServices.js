@@ -1,4 +1,3 @@
-
 const speech = require('@google-cloud/speech');
 const OpenAI = require('openai');
 const path = require('path');
