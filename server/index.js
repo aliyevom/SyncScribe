@@ -8,9 +8,6 @@ const OpenAI = require('openai');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const credentialService = require('./services/credentialService');
-const proxyService = require('./services/proxyService');
-const encryptionService = require('./services/encryptionService');
 
 const app = express();
 const server = http.createServer(app);
@@ -21,11 +18,16 @@ const io = new Server(server, {
   }
 });
 
-// Initialize the Speech-to-Text client with encrypted credentials
-const speechClient = new speech.SpeechClient(credentialService.getGoogleConfig());
+// Initialize the Speech-to-Text client
+const speechClient = new speech.SpeechClient({
+  keyFilename: './key.json'
+});
 
-// Initialize OpenAI client with encrypted credentials
-const openai = new OpenAI(credentialService.getOpenAIConfig());
+// Initialize OpenAI client
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
+  organization: 'org-gIJcbyQkgXhwX3leP6HLMuEd'
+});
 
 app.use(cors());
 app.use(express.json());
@@ -51,76 +53,7 @@ app.get('/health', (req, res) => {
   });
 });
 
-// Add the test routes before error handlers
-app.get('/test-credentials', async (req, res) => {
-  try {
-    // Test OpenAI credentials
-    const openaiConfig = credentialService.getOpenAIConfig();
-    const googleConfig = credentialService.getGoogleConfig();
-    
-    res.json({
-      status: 'ok',
-      openai: {
-        hasApiKey: !!openaiConfig.apiKey,
-        hasOrgId: !!openaiConfig.organization
-      },
-      google: {
-        hasProjectId: !!googleConfig.projectId,
-        hasClientEmail: !!googleConfig.credentials.client_email,
-        hasPrivateKey: !!googleConfig.credentials.private_key
-      }
-    });
-  } catch (error) {
-    console.error('Credential test error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-});
-
-app.get('/test-proxy', async (req, res) => {
-  try {
-    console.log('Starting proxy test...');
-    
-    // Test OpenAI API through proxy
-    const response = await proxyService.makeRequest({
-      hostname: 'api.openai.com',
-      path: '/v1/models',
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${credentialService.getOpenAIConfig().apiKey}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    // Decrypt the response if it's from OpenAI
-    const decryptedResponse = encryptionService.decrypt(response);
-    
-    console.log('Proxy test completed successfully');
-    res.json({
-      status: 'ok',
-      message: 'Proxy test successful',
-      response: JSON.parse(decryptedResponse)
-    });
-  } catch (error) {
-    console.error('Proxy test error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-      details: {
-        code: error.code,
-        errno: error.errno,
-        syscall: error.syscall,
-        address: error.address,
-        port: error.port
-      }
-    });
-  }
-});
-
-// Move error handling routes to the end
+// Error handling routes
 app.use((req, res) => {
   res.status(404).json({ 
     error: 'Not Found',
@@ -230,7 +163,7 @@ const EXAMPLE_CONVERSATIONS = {
    
    • Security & Compliance: Align with corporate governance policies and regulatory frameworks (e.g., GDPR) by implementing Azure AD-based authentication and role-based access controls. Regular security audits ensure proper RLS configurations and prevent data leakage.
    
-   ��� Performance & Scalability: Incremental refresh reduces processing overhead. Optimize DAX measures, partition large tables, and leverage Aggregations for faster queries. Monitor performance with Power BI Premium metrics and Azure Monitor logs.
+   • Performance & Scalability: Incremental refresh reduces processing overhead. Optimize DAX measures, partition large tables, and leverage Aggregations for faster queries. Monitor performance with Power BI Premium metrics and Azure Monitor logs.
    
    • Cost Management: Track Azure consumption costs and optimize resource usage. Consider Power BI Premium capacity for large-scale deployments, and carefully size compute resources to balance performance and cost.
 
@@ -660,14 +593,14 @@ startServer(PORT);
 // Handle process termination
 process.on('SIGTERM', () => {
   console.log('SIGTERM received. Cleaning up...');
-  proxyService.cleanup();
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT received. Cleaning up...');
-  proxyService.cleanup();
-  process.exit(0);
+  for (const [_, stream] of activeSessions.entries()) {
+    if (stream) {
+      stream.destroy();
+    }
+  }
+  server.close(() => {
+    process.exit(0);
+  });
 });
 
 // Add function to restart stream
