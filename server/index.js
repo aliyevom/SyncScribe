@@ -232,7 +232,7 @@ const EXAMPLE_CONVERSATIONS = {
    
    • Security & Compliance: Align with corporate governance policies and regulatory frameworks (e.g., GDPR) by implementing Azure AD-based authentication and role-based access controls. Regular security audits ensure proper RLS configurations and prevent data leakage.
    
-   ��� Performance & Scalability: Incremental refresh reduces processing overhead. Optimize DAX measures, partition large tables, and leverage Aggregations for faster queries. Monitor performance with Power BI Premium metrics and Azure Monitor logs.
+   • Performance & Scalability: Incremental refresh reduces processing overhead. Optimize DAX measures, partition large tables, and leverage Aggregations for faster queries. Monitor performance with Power BI Premium metrics and Azure Monitor logs.
    
    • Cost Management: Track Azure consumption costs and optimize resource usage. Consider Power BI Premium capacity for large-scale deployments, and carefully size compute resources to balance performance and cost.
 
@@ -345,7 +345,7 @@ const formatAIResponse = (text) => {
 </div>`;
         }
         return `<div class="bullet-row">
-<span class="bullet">•</span>
+<span class="bullet">���</span>
 <span class="bullet-content">${content}</span>
 </div>`;
     });
