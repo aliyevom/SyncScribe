@@ -1,0 +1,343 @@
+{
+  "organization": {
+    "name": "Your Company Name",
+    "mission": "Building innovative solutions that matter",
+    "values": ["Innovation", "Collaboration", "Customer Focus", "Excellence"],
+    "structure": {
+      "engineering": {
+        "teams": ["Frontend", "Backend", "Mobile", "DevOps", "QA", "Security"],
+        "techStack": [
+          "React", "Next.js", "TypeScript", "Node.js", "Python", 
+          "PostgreSQL", "Redis", "MongoDB", "Elasticsearch",
+          "AWS", "Docker", "Kubernetes", "Terraform",
+          "GitHub Actions", "Jenkins", "DataDog", "Grafana"
+        ],
+        "processes": [
+          "Agile/Scrum", "2-week sprints", "CI/CD", 
+          "Code Reviews", "Pair Programming", "TDD",
+          "Daily Standups", "Sprint Planning", "Retrospectives"
+        ]
+      },
+      "product": {
+        "teams": ["Product Management", "UX/UI Design", "Data Analytics", "Growth"],
+        "tools": ["Jira", "Confluence", "Figma", "Amplitude", "Mixpanel", "Notion"]
+      },
+      "leadership": {
+        "cto": "Jane Smith",
+        "vpEngineering": "John Doe",
+        "engineeringManagers": ["Sarah Johnson", "Mike Chen", "Lisa Williams"]
+      }
+    }
+  },
+  
+  "teamMembers": {
+    "jane.smith@company.com": {
+      "name": "Jane Smith",
+      "role": "CTO",
+      "expertise": ["Architecture", "Leadership", "Cloud Strategy", "Team Building"],
+      "projects": ["Platform Modernization", "Tech Strategy"],
+      "decisionMaker": true,
+      "slackHandle": "@jane",
+      "timezone": "PST"
+    },
+    "john.doe@company.com": {
+      "name": "John Doe",
+      "role": "VP of Engineering",
+      "expertise": ["Team Management", "Process Optimization", "Scaling"],
+      "teams": ["All Engineering Teams"],
+      "decisionMaker": true,
+      "onboardingBuddy": true,
+      "slackHandle": "@john",
+      "timezone": "PST"
+    },
+    "sarah.johnson@company.com": {
+      "name": "Sarah Johnson",
+      "role": "Engineering Manager - Frontend",
+      "expertise": ["React", "Performance", "Team Leadership", "Mentoring"],
+      "teams": ["Frontend Team"],
+      "projects": ["Dashboard v2", "Mobile Web"],
+      "decisionMaker": true,
+      "onboardingBuddy": true,
+      "slackHandle": "@sarah",
+      "timezone": "EST"
+    },
+    "mike.chen@company.com": {
+      "name": "Mike Chen",
+      "role": "Senior Backend Engineer",
+      "expertise": ["Python", "Microservices", "API Design", "PostgreSQL", "Redis"],
+      "projects": ["API Gateway", "Auth Service", "Data Pipeline"],
+      "techLead": true,
+      "slackHandle": "@mike",
+      "timezone": "PST"
+    },
+    "lisa.williams@company.com": {
+      "name": "Lisa Williams",
+      "role": "Senior Frontend Engineer",
+      "expertise": ["React", "TypeScript", "GraphQL", "Performance", "Accessibility"],
+      "projects": ["Dashboard v2", "Component Library"],
+      "onboardingBuddy": true,
+      "slackHandle": "@lisa",
+      "timezone": "CST"
+    },
+    "alex.kumar@company.com": {
+      "name": "Alex Kumar",
+      "role": "DevOps Lead",
+      "expertise": ["AWS", "Kubernetes", "CI/CD", "Monitoring", "Infrastructure as Code"],
+      "projects": ["Platform Migration", "CI/CD Pipeline"],
+      "techLead": true,
+      "slackHandle": "@alex",
+      "timezone": "PST"
+    }
+  },
+  
+  "glossary": {
+    "API": "Application Programming Interface - Our main API is at api.company.com",
+    "MVP": "Minimum Viable Product - We ship MVPs in 2-4 week cycles",
+    "OKR": "Objectives and Key Results - Set quarterly, reviewed monthly",
+    "SLA": "Service Level Agreement - 99.9% uptime for production services",
+    "CI/CD": "Continuous Integration/Deployment - Automated via GitHub Actions",
+    "PR": "Pull Request - All code requires review before merge",
+    "P0/P1/P2": "Priority levels - P0 is critical/blocking, P1 is high, P2 is medium",
+    "RFC": "Request for Comments - Design doc process for major changes",
+    "SRE": "Site Reliability Engineering - Our approach to ops",
+    "DRI": "Directly Responsible Individual - Single owner for decisions",
+    "1:1": "One-on-one meeting between manager and report",
+    "All Hands": "Company-wide meeting held monthly",
+    "Sprint": "2-week development cycle",
+    "Retro": "Retrospective meeting at end of each sprint",
+    "Standup": "Daily 15-minute team sync meeting",
+    "Oncall": "Weekly rotation for production support",
+    "Runbook": "Documentation for handling production issues",
+    "Post-mortem": "Blameless analysis after incidents"
+  },
+  
+  "currentProjects": [
+    {
+      "name": "Dashboard v2",
+      "status": "In Progress",
+      "quarter": "Q4 2024",
+      "team": ["Frontend", "Backend", "UX"],
+      "lead": "Sarah Johnson",
+      "keyObjectives": [
+        "50% performance improvement",
+        "Real-time data updates via WebSockets",
+        "Mobile responsive design",
+        "Accessibility WCAG 2.1 AA compliance"
+      ],
+      "techDecisions": [
+        "React 18 with Server Components",
+        "GraphQL for data fetching",
+        "WebSockets for real-time updates",
+        "Tailwind CSS for styling"
+      ],
+      "milestones": [
+        {"date": "2024-10-15", "description": "Alpha release to internal users"},
+        {"date": "2024-11-01", "description": "Beta release to 10% of users"},
+        {"date": "2024-11-15", "description": "GA release"}
+      ]
+    },
+    {
+      "name": "API Gateway Migration",
+      "status": "Planning",
+      "quarter": "Q1 2025",
+      "team": ["Backend", "DevOps"],
+      "lead": "Mike Chen",
+      "keyObjectives": [
+        "Migrate from monolith to microservices",
+        "Implement rate limiting and auth",
+        "Improve API response times by 30%"
+      ],
+      "techDecisions": [
+        "Kong Gateway",
+        "OAuth 2.0 for authentication",
+        "Redis for rate limiting",
+        "OpenAPI 3.0 specifications"
+      ]
+    },
+    {
+      "name": "Mobile App v2",
+      "status": "Design Phase",
+      "quarter": "Q1 2025",
+      "team": ["Mobile", "Backend", "UX"],
+      "lead": "TBD",
+      "keyObjectives": [
+        "React Native cross-platform app",
+        "Offline support",
+        "Push notifications",
+        "Biometric authentication"
+      ]
+    }
+  ],
+  
+  "onboarding": {
+    "week1": [
+      "Complete IT setup (laptop, accounts, access)",
+      "Read engineering handbook",
+      "Set up development environment",
+      "Deploy first PR to staging",
+      "Meet with team members (1:1s)",
+      "Attend team standup and meetings",
+      "Review system architecture docs"
+    ],
+    "week2": [
+      "Complete first small feature or bug fix",
+      "Shadow oncall engineer",
+      "Attend sprint planning",
+      "Set up local development for all services",
+      "Read recent RFCs and design docs",
+      "Pair program with team members"
+    ],
+    "week3": [
+      "Take on medium-sized task",
+      "Participate in code reviews",
+      "Attend architecture review meeting",
+      "Learn deployment process",
+      "Document something you learned"
+    ],
+    "week4": [
+      "Lead a small feature",
+      "Present at team meeting",
+      "Participate in sprint retrospective",
+      "Create 30/60/90 day plan with manager"
+    ],
+    "resources": [
+      "Engineering Wiki: wiki.company.com",
+      "Architecture Docs: docs.company.com/architecture",
+      "API Documentation: api.company.com/docs",
+      "Runbooks: runbooks.company.com",
+      "Team Handbook: handbook.company.com/engineering",
+      "Slack Channels: #eng-general, #eng-frontend, #eng-backend",
+      "Learning Budget: $1500/year for courses and conferences"
+    ],
+    "buddyProgram": {
+      "duration": "First 30 days",
+      "responsibilities": [
+        "Daily check-ins for first week",
+        "Help with technical questions",
+        "Introduce to team members",
+        "Guide through first PRs",
+        "Share team culture and norms"
+      ]
+    }
+  },
+  
+  "meetingPatterns": {
+    "standup": {
+      "format": ["Yesterday", "Today", "Blockers"],
+      "duration": "15 minutes",
+      "frequency": "Daily at 10am",
+      "participants": "Team members",
+      "facilitator": "Rotating"
+    },
+    "planning": {
+      "format": [
+        "Review previous sprint",
+        "Demo completed work",
+        "Review backlog",
+        "Estimate stories",
+        "Commit to sprint goals"
+      ],
+      "duration": "2 hours",
+      "frequency": "Every 2 weeks",
+      "participants": "Team + Product Manager",
+      "facilitator": "Scrum Master"
+    },
+    "retrospective": {
+      "format": [
+        "What went well?",
+        "What could improve?",
+        "Action items"
+      ],
+      "duration": "1 hour",
+      "frequency": "End of each sprint",
+      "participants": "Team members",
+      "facilitator": "Rotating"
+    },
+    "oneOnOne": {
+      "format": [
+        "Personal check-in",
+        "Work progress",
+        "Career development",
+        "Feedback both ways"
+      ],
+      "duration": "30-45 minutes",
+      "frequency": "Weekly or bi-weekly",
+      "participants": "Manager + Report"
+    },
+    "architectureReview": {
+      "format": [
+        "Problem statement",
+        "Proposed solution",
+        "Alternatives considered",
+        "Technical discussion",
+        "Decision and next steps"
+      ],
+      "duration": "1 hour",
+      "frequency": "As needed",
+      "participants": "Tech leads + Architects",
+      "decisionMaker": "Tech Lead or CTO"
+    }
+  },
+  
+  "communicationChannels": {
+    "slack": {
+      "important": [
+        "#announcements - Company-wide announcements",
+        "#eng-general - Engineering team general",
+        "#eng-oncall - Production issues and oncall",
+        "#eng-architecture - Architecture discussions",
+        "#eng-learning - Share learning resources"
+      ],
+      "teamSpecific": [
+        "#team-frontend - Frontend team",
+        "#team-backend - Backend team",
+        "#team-mobile - Mobile team",
+        "#team-devops - DevOps team"
+      ],
+      "social": [
+        "#random - Non-work chat",
+        "#kudos - Recognize team members",
+        "#coffee-buddies - Random coffee chats"
+      ]
+    },
+    "email": {
+      "lists": [
+        "eng-all@company.com - All engineering",
+        "tech-leads@company.com - Tech leads",
+        "oncall@company.com - Oncall rotation"
+      ]
+    }
+  },
+  
+  "developmentProcess": {
+    "codeReview": {
+      "required": true,
+      "minReviewers": 1,
+      "guidelines": [
+        "Review within 24 hours",
+        "Focus on correctness, readability, and maintainability",
+        "Be constructive and specific",
+        "Approve with 'LGTM' (Looks Good To Me)"
+      ]
+    },
+    "testing": {
+      "requirements": [
+        "Unit tests for new code",
+        "Integration tests for APIs",
+        "80% code coverage target",
+        "E2E tests for critical user flows"
+      ],
+      "tools": ["Jest", "Pytest", "Cypress", "Playwright"]
+    },
+    "deployment": {
+      "environments": ["Local", "Dev", "Staging", "Production"],
+      "process": [
+        "PR approved and merged to main",
+        "Automated tests pass",
+        "Deploy to staging automatically",
+        "Manual approval for production",
+        "Monitoring and rollback plan"
+      ]
+    }
+  }
+} 

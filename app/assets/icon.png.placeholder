@@ -1,0 +1,21 @@
+# SyncScribe Icon Placeholder
+
+This is a placeholder for the main app icon (icon.png).
+
+To create the actual icon:
+1. Convert the icon.svg file to PNG format (512x512 pixels)
+2. Name it icon.png and replace this placeholder
+3. Create additional formats for other platforms:
+   - icon.icns for macOS (use iconutil or online converter)
+   - icon.ico for Windows (use online converter or GIMP)
+
+Recommended online converters:
+- https://convertio.co/svg-png/
+- https://cloudconvert.com/svg-to-png
+- https://ezgif.com/svg-to-png
+
+For best results, ensure the icon is:
+- 512x512 pixels
+- High contrast for visibility
+- Clear at small sizes (16x16, 32x32)
+- Professional appearance 
