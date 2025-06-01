@@ -1,378 +1,414 @@
 require('dotenv').config();
+
 const express = require('express');
 const http = require('http');
-const { Server } = require('socket.io');
+const socketIo = require('socket.io');
 const cors = require('cors');
-const speech = require('@google-cloud/speech');
 const OpenAI = require('openai');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
-const credentialService = require('./services/credentialService');
-const proxyService = require('./services/proxyService');
-const encryptionService = require('./services/encryptionService');
-
-
+const { 
+  createGoogleStream, 
+  processWithOpenAI,
+  processWithHybrid,
+  openai 
+} = require('./services/speechServices');
+const { teamKnowledge } = require('./services/teamKnowledge');
+const { tagService } = require('./services/tagService');
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server, {
+
+const io = socketIo(server, {
   cors: {
-    origin: "http://localhost:3000",
+    origin: "*",
     methods: ["GET", "POST"]
   }
 });
 
-
-const speechClient = new speech.SpeechClient(credentialService.getGoogleConfig());
-
-// Initialize OpenAI client with encrypted credentials
-const openai = new OpenAI(credentialService.getOpenAIConfig());
-
 app.use(cors());
 app.use(express.json());
 
-// Add the new routes here
-app.get('/', (req, res) => {
-  res.json({ 
-    status: 'ok',
-    message: 'Speech-to-Text Transcription Server',
-    endpoints: {
-      health: '/health',
-      websocket: 'ws://localhost:5001'
-    }
-  });
-});
-
-app.get('/health', (req, res) => {
-  res.json({ 
-    status: 'healthy',
-    timestamp: new Date().toISOString(),
-    activeConnections: io.engine.clientsCount,
-    activeSessions: activeSessions.size
-  });
-});
-
-// Add the test routes before error handlers
-app.get('/test-credentials', async (req, res) => {
-  try {
-    // Test OpenAI credentials
-    const openaiConfig = credentialService.getOpenAIConfig();
-    const googleConfig = credentialService.getGoogleConfig();
-    
-    res.json({
-      status: 'ok',
-      openai: {
-        hasApiKey: !!openaiConfig.apiKey,
-        hasOrgId: !!openaiConfig.organization
-      },
-      google: {
-        hasProjectId: !!googleConfig.projectId,
-        hasClientEmail: !!googleConfig.credentials.client_email,
-        hasPrivateKey: !!googleConfig.credentials.private_key
-      }
-    });
-  } catch (error) {
-    console.error('Credential test error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message
-    });
-  }
-});
-
-app.get('/test-proxy', async (req, res) => {
-  try {
-    console.log('Starting proxy test...');
-    
-    // Test OpenAI API through proxy
-    const response = await proxyService.makeRequest({
-      hostname: 'api.openai.com',
-      path: '/v1/models',
-      method: 'GET',
-      headers: {
-        'Authorization': `Bearer ${credentialService.getOpenAIConfig().apiKey}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    // Decrypt the response if it's from OpenAI
-    const decryptedResponse = encryptionService.decrypt(response);
-    
-    console.log('Proxy test completed successfully');
-    res.json({
-      status: 'ok',
-      message: 'Proxy test successful',
-      response: JSON.parse(decryptedResponse)
-    });
-  } catch (error) {
-    console.error('Proxy test error:', error);
-    res.status(500).json({
-      status: 'error',
-      message: error.message,
-      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined,
-      details: {
-        code: error.code,
-        errno: error.errno,
-        syscall: error.syscall,
-        address: error.address,
-        port: error.port
-      }
-    });
-  }
-});
-
-// Move error handling routes to the end
-app.use((req, res) => {
-  res.status(404).json({ 
-    error: 'Not Found',
-    message: 'The requested endpoint does not exist'
-  });
-});
-
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ 
-    error: 'Internal Server Error',
-    message: 'Something went wrong on the server'
-  });
-});
-
-// Store active transcription sessions
+// Store active sessions
 const activeSessions = new Map();
-
-// Add this at the top level of your server file
-let lastTranscription = '';
-let currentSentence = '';
-let wordCount = 0;
-const MIN_WORDS = 200;
-
-// Add these variables at the top level
-let isStreaming = false;
-let streamTimeout = null;
-const STREAM_TIMEOUT = 60000; // 60 seconds
-
-// Add at the top level
-let accumulatedText = '';
-let lastTimestamp = null;
-const ACCUMULATION_TIMEOUT = 2000; // 2 seconds
-let accumulationTimer = null;
-
-const MIN_SENTENCE_COUNT = 4; // Number of sentences to accumulate before sending
-const MAX_CHARS = 300; // Maximum characters before forcing a send
-let sentenceCount = 0;
-
-// Add these variables at the top level
-const TIME_INTERVAL = 10000; // 10 seconds
-const MIN_SENTENCES = 4;
-const MAX_SENTENCES = 5;
-let pendingTranscripts = [];
-let lastTranscriptTime = null;
-let transcriptStartTime = null;
-
-// Add these variables at the top level
-let pendingAIText = [];
-
-// Add near the top of the file
-const mockAIResponses = [
-  "Based on these statements, I understand the key points you're discussing. Would you like me to elaborate on any particular aspect?",
-  "I've analyzed your conversation and noticed several interesting points. Let me know if you'd like me to focus on any specific part.",
-  "From what you've shared, there seem to be multiple topics being discussed. I can provide more detailed insights on any of these points.",
-  "I've processed your conversation and can help clarify or expand on any of the topics mentioned.",
-  "Your discussion covers several important aspects. I can provide more detailed information about any of these points."
-];
-
-let mockResponseIndex = 0;
-
-// At the top, import speech services
-const {
-  createGoogleStream,
-  processWithOpenAI
-} = require('./services/speechServices');
-
-// At the top level, update or add these variables
-const ANALYSIS_INTERVAL = 20000; // 20 seconds
-let lastAIResponseTime = null;
-
-// Create temp directory for audio files if it doesn't exist
-const tempDir = path.join(os.tmpdir(), 'audio-transcription');
-if (!fs.existsSync(tempDir)) {
-  fs.mkdirSync(tempDir, { recursive: true });
-}
-
-// Add this to your environment variables
-process.env.TEMP_AUDIO_DIR = tempDir;
-
-// At the top level, add a variable to track AI processing state
 const aiProcessingSessions = new Map();
 
-// Add these example conversations near the top of the file
-const EXAMPLE_CONVERSATIONS = {
-    powerbi: {
-        user: "The meeting is discussing implementing a company-wide Power BI solution connected to various Azure data sources. Participants are exploring data modeling strategies, incremental refresh policies, row-level security, and CI/CD pipelines for dataset deployment. How would you design and explain this solution in detail?",
-        assistant: `
-1. TECHNICAL CONTEXT (50+ words)
-   The current analytics infrastructure relies heavily on Azure SQL Database and Azure Synapse Analytics as primary data repositories, supplemented by Azure Data Lake Storage for unstructured data. Business units need interactive reports and scalable dashboards. Core objectives include integrating diverse data sources, ensuring data quality, handling large fact tables with incremental refresh, implementing robust RLS for secure data access, and establishing CI/CD pipelines for rapid, reliable Power BI asset deployment. The overarching goal is to streamline data consumption, improve decision-making, and maintain governance standards across the enterprise.
+// Constants
+const ANALYSIS_INTERVAL = 20000; // 20 seconds
 
-2. DETAILED SOLUTION (100+ words)
-   • Data Integration & ETL/ELT Strategies: Leverage Azure Data Factory or Synapse Pipelines to orchestrate data ingestion from various sources (Azure SQL DB, Synapse, Data Lake) into a clean, consistent format. Apply transformations either in Power Query or via Databricks notebooks for advanced data preparation and feature engineering.
-   
-   • Azure Data Stack: Use Azure Synapse as a central query engine, tapping into Data Lake Storage for historical and granular data. Data Factory handles scheduled ingestion and transformations. For complex analytics, consider Databricks for scalable, distributed computations.
-   
-   • Data Modeling: Implement a star schema design within Power BI datasets, ensuring clear fact and dimension tables for efficient querying. This approach simplifies measure creation, DAX calculations, and ensures optimal performance.
-   
-   • Power BI Dashboard Design & DAX: Create role-specific dashboards focusing on key KPIs. Leverage DAX measures for dynamic calculations, time intelligence, and user-personalized views. Employ visuals that highlight trends, outliers, and predictive insights.
-   
-   • Incremental Refresh & RLS: Set up incremental refresh on large fact tables, defining appropriate range partitions for efficient query performance. Apply Row-Level Security based on Azure AD groups to filter data by role, department, or region, ensuring compliance and controlled data visibility.
-   
-   • CI/CD Pipeline Integration: Use Azure DevOps or GitHub Actions to version-control Power BI artifacts (PBIT, JSON, and dataset schemas). Integrate Power BI REST APIs or PowerShell scripts to automate deployments, enabling continuous integration/testing and seamless promotion from development to production environments.
+// AI analysis context per room
+const roomContexts = new Map();
 
-3. CONSIDERATIONS & RISKS (100+ words)
-   • Data Quality & Governance: Ensure all datasets pass through standardized validation frameworks. Adopt a data catalog (e.g., Purview) to maintain data lineage and metadata. Consider data profiling tools to continuously assess quality.
-   
-   • Security & Compliance: Align with corporate governance policies and regulatory frameworks (e.g., GDPR) by implementing Azure AD-based authentication and role-based access controls. Regular security audits ensure proper RLS configurations and prevent data leakage.
-   
-   • Performance & Scalability: Incremental refresh reduces processing overhead. Optimize DAX measures, partition large tables, and leverage Aggregations for faster queries. Monitor performance with Power BI Premium metrics and Azure Monitor logs.
-   
-   • Cost Management: Track Azure consumption costs and optimize resource usage. Consider Power BI Premium capacity for large-scale deployments, and carefully size compute resources to balance performance and cost.
-
-4. ACTION ITEMS (50+ words)
-   • Implementation Steps: 
-     1. Data Ingestion: Configure ADF pipelines to pull data into a standardized landing zone.
-     2. Data Transformation: Apply Power Query transformations or Databricks notebooks for complex data shaping.
-     3. Modeling & Visualizations: Design a robust semantic model and develop intuitive dashboards.
-     4. Security & Governance: Implement RLS, set up Azure Purview, and define user roles.
-     5. CI/CD: Establish automated pipelines to deploy and monitor datasets and reports.
-   
-   • Required Resources: Skilled BI engineers, Azure services (Data Factory, Synapse, Databricks), Power BI Premium capacity, Azure DevOps/GitHub for CI/CD.
-   
-   • Timeline: ~8-12 weeks, phased approach (Design, POC, Deployment).
-   
-   • Success Metrics: Improved report adoption rates, reduced data refresh times, enhanced data quality scores, increased user satisfaction (via surveys), and stable performance metrics (reduced query times).
-
-5. FOLLOW-UP QUESTIONS
-   • Are there specific compliance standards or certifications we need to meet?
-   • What are the peak concurrency requirements for report usage?
-   • Do we need advanced custom visuals or embedded analytics for external stakeholders?
-   • How will we handle schema evolution and maintain backward compatibility?
-`
-    }
-};
-
-// Update the Meeting preset configuration
-const MEETING_PRESET = {
-    systemPrompt: `You are a Business Intelligence Analyst working in an Azure-centric environment. Your meeting focuses on implementing enterprise data analytics solutions, optimizing data pipelines, integrating multiple data sources, and designing Power BI dashboards for insightful reporting. Your responses should reflect best practices in data modeling, ETL/ELT, data governance, incremental refresh configurations, row-level security, CI/CD pipelines for deployments, and interactive visualization design in Power BI.
-
-Response Format:
-1. TECHNICAL CONTEXT (50+ words)
-   • Current Data Architecture
-   • Business/Analytical Requirements
-   • Key Data Sources & Systems (Azure SQL DB, Azure Synapse, Data Lake, etc.)
-
-2. DETAILED SOLUTION (100+ words)
-   • Data Integration & ETL/ELT Strategies
-   • Azure Data Stack (Data Factory, Synapse, Databricks)
-   • Data Modeling Approaches (Star Schema, Data Vault)
-   • Power BI Dashboard Design & DAX Examples
-   • Incremental Refresh & Row-Level Security (RLS) considerations
-   • CI/CD Pipeline Integration for Power BI assets
-
-3. CONSIDERATIONS & RISKS (100+ words)
-   • Data Quality & Governance
-   • Security & Compliance (Azure AD, RBAC)
-   • Performance & Scalability (Query Optimization, Incremental Refresh)
-   • Cost Management (Azure Consumption, Power BI Licensing)
-
-4. ACTION ITEMS (50+ words)
-   • Implementation Steps (Ingestion, Transformation, Visualization)
-   • Required Resources (Azure Services, Skills, Tools)
-   • Timeline Estimates (Phased Approach)
-   • Success Metrics (Report Adoption, Query Performance, Data Freshness)
-
-5. FOLLOW-UP QUESTIONS
-   • Clarifications on Data Sources
-   • Analytical Requirements Details
-   • Visualization Customizations
-
-Ensure responses are a minimum of 300 words, technically accurate, and aligned with modern BI best practices.`,
+// Specialized AI Agents
+const AI_AGENTS = {
+  MEETING_ANALYST: {
+    name: 'Meeting Analyst',
+    systemPrompt: `You are an expert meeting analyst for a technical team. 
+    Your role is to analyze conversations and provide actionable insights.
+    
+    You have access to team knowledge including:
+    - Team member profiles and expertise
+    - Current projects and their objectives
+    - Technical stack and architecture decisions
+    - Company glossary and terminology
+    
+    For each conversation segment, provide:
+    1. **Meeting Type & Context**: Identify the type of meeting and its purpose
+    2. **Key Discussion Points**: Summarize main topics with relevant team context
+    3. **Decisions Made**: Clear decisions with decision makers identified
+    4. **Action Items**: Specific tasks with suggested assignees based on expertise
+    5. **Technical Insights**: Architecture decisions, technical challenges, solutions proposed
+    6. **Follow-up Questions**: Questions that need clarification
+    7. **Team Dynamics**: Note any collaboration patterns or concerns
+    
+    Format your response with clear headers and bullet points.
+    Reference specific team members by name when relevant.
+    Connect discussions to existing projects and initiatives.`,
     settings: {
-        model: "gpt-3.5-turbo",
-        max_tokens: 2000,
-        temperature: 0.7,
+      model: 'gpt-4-turbo-preview',
+      temperature: 0.3,
+      max_tokens: 800,
+      frequency_penalty: 0.3,
+      presence_penalty: 0.2
+    }
+  },
+  
+  ONBOARDING_ASSISTANT: {
+    name: 'Onboarding Assistant',
+    systemPrompt: `You are an onboarding assistant helping new team members understand:
+    - Team structure and member roles
+    - Technical architecture and decisions
+    - Current projects and priorities
+    - Development processes and best practices
+    - Company terminology and culture
+    
+    When analyzing conversations involving new team members:
+    1. **Context Explanation**: Explain technical terms and company-specific concepts
+    2. **Team Introductions**: Identify who's speaking and their roles
+    3. **Learning Opportunities**: Highlight important information for newcomers
+    4. **Resources**: Suggest relevant documentation or people to connect with
+    5. **Next Steps**: Recommend specific onboarding tasks or areas to explore
+    
+    Be encouraging and supportive. Make complex topics accessible.`,
+    settings: {
+      model: 'gpt-4-turbo-preview',
+      temperature: 0.5,
+      max_tokens: 600,
+      frequency_penalty: 0.2,
+      presence_penalty: 0.3
+    }
+  },
+  
+  TECHNICAL_ARCHITECT: {
+    name: 'Technical Architect',
+    systemPrompt: `You are a senior technical architect analyzing technical discussions.
+    Focus on:
+    - Architecture decisions and their implications
+    - Technical debt and optimization opportunities
+    - Best practices and design patterns
+    - Performance and scalability considerations
+    - Security implications
+    - Integration challenges
+    
+    Provide analysis that includes:
+    1. **Architecture Review**: Current design decisions and alternatives
+    2. **Technical Recommendations**: Specific improvements with rationale
+    3. **Risk Assessment**: Potential issues and mitigation strategies
+    4. **Best Practices**: Relevant patterns and industry standards
+    5. **Performance Insights**: Optimization opportunities
+    6. **Security Considerations**: Potential vulnerabilities and fixes
+    
+    Be specific and reference actual technologies being discussed.`,
+    settings: {
+      model: 'gpt-4-turbo-preview',
+      temperature: 0.2,
+      max_tokens: 700,
+      frequency_penalty: 0.3,
+      presence_penalty: 0.2
+    }
+  },
+  
+  ACTION_TRACKER: {
+    name: 'Action Item Tracker',
+    systemPrompt: `You are an action item and decision tracker. Your job is to:
+    - Extract clear action items with owners and deadlines
+    - Track decisions made and their rationale
+    - Identify blockers and dependencies
+    - Note commitments and promises made
+    
+    Format output as:
+    1. **Action Items**: 
+       - Task | Owner | Deadline | Priority
+    2. **Decisions**:
+       - Decision | Rationale | Impact | Decision Maker
+    3. **Blockers**:
+       - Issue | Impact | Owner | Required Action
+    4. **Commitments**:
+       - Who | What | When | To Whom
+    
+    Be very specific and avoid ambiguity.`,
+    settings: {
+      model: 'gpt-4-turbo-preview',
+      temperature: 0.1,
+      max_tokens: 500,
         frequency_penalty: 0.2,
-        presence_penalty: 0.5
+      presence_penalty: 0.1
     }
+  }
 };
 
-// Update fallback configuration
-const FALLBACK_PRESET = {
-    ...MEETING_PRESET,
-    settings: {
-        ...MEETING_PRESET.settings,
-        model: "gpt-3.5-turbo-1106"
-    }
+// Fallback configuration for rate limits
+const FALLBACK_CONFIG = {
+  model: 'gpt-3.5-turbo-1106',
+  temperature: 0.3,
+  max_tokens: 400,
+  frequency_penalty: 0.2,
+  presence_penalty: 0.1
 };
 
-// Update the formatAIResponse function
-const formatAIResponse = (text) => {
-    // Pre-process text
-    text = text
-        .replace(/\r\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
+// Initialize team knowledge base
+const initializeKnowledgeBase = async () => {
+  try {
+    // Try to load custom team data if available
+    await teamKnowledge.loadTeamData('./team-data.json');
+    console.log('Team knowledge base initialized');
+  } catch (error) {
+    console.log('Using default team knowledge base');
+  }
+};
 
-    // Format main headers (like "TECHNICAL CONTEXT:")
-    text = text.replace(/^([A-Z][A-Z\s&]+):$/gm, (match, header) => {
-        return `<div class="section-header">${header}</div>`;
+initializeKnowledgeBase();
+
+// Function to format AI response with rich HTML
+const formatAIResponse = (analysis, agentName) => {
+    let html = `<div class="ai-analysis">`;
+    html += `<div class="agent-header">${agentName}</div>`;
+    
+    // Split by numbered or bulleted sections
+    const sections = analysis.split(/\n(?=\d+\.\s+\*\*|#{1,3}\s+|\*\*)/);
+    
+    sections.forEach(section => {
+        if (!section.trim()) return;
+        
+        // Handle main headers (## Header or **Header**)
+        if (section.match(/^#{1,3}\s+(.+)|^\*\*(.+)\*\*:/)) {
+            const headerMatch = section.match(/^#{1,3}\s+(.+)|^\*\*(.+)\*\*:/);
+            const headerText = headerMatch[1] || headerMatch[2];
+            
+            html += `<div class="analysis-section">`;
+            html += `<div class="section-header">${headerText.replace(/\*\*/g, '')}</div>`;
+            
+            // Process the content after the header
+            const content = section.substring(headerMatch[0].length).trim();
+            html += formatContent(content);
+            html += `</div>`;
+        }
+        // Handle numbered sections (1. **Header**)
+        else if (section.match(/^\d+\.\s+\*\*(.+)\*\*/)) {
+            const match = section.match(/^(\d+)\.\s+\*\*(.+)\*\*:?\s*([\s\S]*)/);
+            if (match) {
+                html += `<div class="analysis-section">`;
+                html += `<div class="section-header">${match[1]}. ${match[2]}</div>`;
+                html += formatContent(match[3]);
+                html += `</div>`;
+            }
+        } else {
+            html += formatContent(section);
+        }
     });
+    
+    html += `</div>`;
+    return html;
+};
 
-    // Format colored headers (like "Current Situation:")
-    text = text.replace(/^([A-Za-z][A-Za-z\s]+):\s*(.+)$/gm, (match, header, content) => {
-        return `<div class="content-row">
-<span class="header-text">${header}:</span>
-<span class="header-content">${content}</span>
-</div>`;
-    });
-
-    // Format bullet points
-    text = text.replace(/^[•\-]\s*(.+)$/gm, (match, content) => {
-        if (content.includes(':')) {
-            const [label, value] = content.split(':').map(s => s.trim());
-            return `<div class="bullet-row">
+// Helper function to format content
+const formatContent = (content) => {
+    if (!content) return '';
+    
+    let formatted = content;
+    
+    // Format bullet points with better structure
+    formatted = formatted.replace(/^\s*[-•]\s+(.+)$/gm, (match, text) => {
+        // Check if it's a key-value format
+        if (text.includes(':') || text.includes('|')) {
+            const separator = text.includes('|') ? '|' : ':';
+            const parts = text.split(separator).map(p => p.trim());
+            
+            if (parts.length >= 2) {
+                const label = parts[0];
+                const value = parts.slice(1).join(separator);
+                
+                return `<div class="bullet-item">
 <span class="bullet">•</span>
 <span class="bullet-label">${label}:</span>
-<span class="bullet-content">${value}</span>
+    <span class="bullet-value">${value}</span>
 </div>`;
+            }
         }
-        return `<div class="bullet-row">
-<span class="bullet">���</span>
-<span class="bullet-content">${content}</span>
+        
+        return `<div class="bullet-item">
+<span class="bullet">•</span>
+    <span class="bullet-text">${text}</span>
 </div>`;
     });
 
-    // Format numbered lists
-    text = text.replace(/^\d+\.\s*(.+)$/gm, (match, content) => {
-        return `<div class="number-row">
-<span class="number"></span>
-<span class="number-content">${content}</span>
-</div>`;
-    });
-
-    // Clean up and wrap
-    text = text
-        .replace(/\n{3,}/g, '\n\n')
-        .replace(/^\s+/gm, '')
-        .replace(/\s+$/gm, '')
-        .trim();
-
-    return `<div class="ai-content">${text}</div>`;
+    // Format inline bold text
+    formatted = formatted.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    
+    // Format inline code
+    formatted = formatted.replace(/`([^`]+)`/g, '<code>$1</code>');
+    
+    // Format line breaks
+    formatted = formatted.replace(/\n\n/g, '</p><p>');
+    formatted = formatted.replace(/\n/g, '<br>');
+    
+    // Wrap in paragraph if not already wrapped
+    if (!formatted.includes('<div') && !formatted.includes('<p>')) {
+        formatted = `<p>${formatted}</p>`;
+    }
+    
+    return formatted;
 };
 
+// Enhanced AI analysis with team context
+const analyzeWithAgent = async (text, roomId, agent = AI_AGENTS.MEETING_ANALYST) => {
+    try {
+        // Get or create room context
+        if (!roomContexts.has(roomId)) {
+            roomContexts.set(roomId, {
+                meetingType: null,
+                participants: new Set(),
+                topics: new Set(),
+                projectsMentioned: new Set(),
+                decisions: [],
+                actionItems: [],
+                tags: new Set()
+            });
+        }
+        
+        const roomContext = roomContexts.get(roomId);
+        
+        // Extract tags from transcript
+        const detectedTags = tagService.getAllTags(text);
+        detectedTags.forEach(tag => roomContext.tags.add(tag));
+        
+        // Build tag context for AI
+        const tagContext = tagService.buildTagContext(detectedTags);
+        
+        // Build context from team knowledge
+        const contextAnalysis = teamKnowledge.buildContextPrompt(text);
+        roomContext.meetingType = contextAnalysis.meetingType;
+        
+        // Update room context with entities
+        contextAnalysis.entities.people.forEach(p => roomContext.participants.add(p));
+        contextAnalysis.entities.projects.forEach(p => roomContext.projectsMentioned.add(p));
+        contextAnalysis.entities.technologies.forEach(t => roomContext.topics.add(t));
+        
+        // Build enhanced prompt with team context and tags
+        let enhancedPrompt = agent.systemPrompt + '\n\n';
+        enhancedPrompt += 'Team Context:\n' + contextAnalysis.context + '\n\n';
+        
+        // Add tag context if present
+        if (tagContext) {
+            enhancedPrompt += 'Tag Context:\n' + tagContext + '\n\n';
+            enhancedPrompt += 'Detected Tags: ' + detectedTags.join(', ') + '\n\n';
+        }
+        
+        enhancedPrompt += 'Meeting Context:\n';
+        enhancedPrompt += `- Meeting Type: ${roomContext.meetingType}\n`;
+        enhancedPrompt += `- Participants: ${Array.from(roomContext.participants).join(', ')}\n`;
+        enhancedPrompt += `- Projects Mentioned: ${Array.from(roomContext.projectsMentioned).join(', ')}\n`;
+        enhancedPrompt += `- Technologies Discussed: ${Array.from(roomContext.topics).join(', ')}\n`;
+        enhancedPrompt += `- Active Tags: ${Array.from(roomContext.tags).join(', ')}\n\n`;
+        
+        // For onboarding meetings, add specific context
+        if (contextAnalysis.isOnboarding) {
+            const onboardingContext = teamKnowledge.getOnboardingContext();
+            enhancedPrompt += `\nOnboarding Context:\n`;
+            enhancedPrompt += `- Current Week Tasks: ${onboardingContext.tasks.join(', ')}\n`;
+            enhancedPrompt += `- Available Buddies: ${onboardingContext.buddies.join(', ')}\n`;
+            enhancedPrompt += `- Key Resources: ${onboardingContext.resources.join(', ')}\n\n`;
+        }
+        
+        // Call OpenAI with enhanced context
+        const completion = await openai.chat.completions.create({
+            ...agent.settings,
+            messages: [
+                {
+                    role: "system",
+                    content: enhancedPrompt
+                },
+                {
+                    role: "user",
+                    content: `Analyze this conversation segment:\n\n${text}`
+                }
+            ]
+        });
+        
+        const analysis = completion.choices[0].message.content;
+        
+        // Extract and store action items and decisions
+        const actionItemMatches = analysis.matchAll(/(?:action item|todo|task):\s*([^.]+)/gi);
+        for (const match of actionItemMatches) {
+            roomContext.actionItems.push({
+                text: match[1].trim(),
+                timestamp: new Date().toISOString(),
+                segment: text.substring(0, 50) + '...',
+                tags: detectedTags
+            });
+        }
+        
+        return {
+            analysis: formatAIResponse(analysis, agent.name),
+            agent: agent.name,
+            context: contextAnalysis,
+            tags: detectedTags,
+            tagMetadata: detectedTags.map(tag => tagService.getTagMetadata(tag)),
+            roomContext: {
+                meetingType: roomContext.meetingType,
+                participants: Array.from(roomContext.participants),
+                topics: Array.from(roomContext.topics),
+                actionItems: roomContext.actionItems.slice(-5), // Last 5 action items
+                tags: Array.from(roomContext.tags)
+            }
+        };
+        
+    } catch (error) {
+        console.error('Error with AI agent:', error);
+        
+        // Try fallback model
+        try {
+            const fallbackCompletion = await openai.chat.completions.create({
+                ...FALLBACK_CONFIG,
+                messages: [
+                    {
+                        role: "system",
+                        content: agent.systemPrompt
+                    },
+                    {
+                        role: "user",
+                        content: text
+                    }
+                ]
+            });
+            
+            return {
+                analysis: formatAIResponse(fallbackCompletion.choices[0].message.content, agent.name),
+                agent: agent.name,
+                isFallback: true
+            };
+        } catch (fallbackError) {
+            throw fallbackError;
+        }
+    }
+};
+
+// Socket.io connection handling
 io.on('connection', (socket) => {
   console.log('Client connected:', socket.id);
   let recognizeStream = null;
   let currentService = null;
   let audioBuffer = Buffer.alloc(0);
+  let lastProcessTime = Date.now();
+  const minProcessInterval = 2000; // Minimum 2 seconds between processing
 
   socket.on('start_transcription', async ({ roomId, service }) => {
     try {
@@ -392,6 +428,19 @@ io.on('connection', (socket) => {
 
       socket.join(roomId);
       socket.emit('transcription_started');
+      
+      // Initialize room context
+      if (!roomContexts.has(roomId)) {
+        roomContexts.set(roomId, {
+          meetingType: null,
+          participants: new Set(),
+          topics: new Set(),
+          projectsMentioned: new Set(),
+          decisions: [],
+          actionItems: [],
+          tags: new Set()
+        });
+      }
     } catch (error) {
       console.error('Error starting transcription:', error);
       socket.emit('transcription_error', { 
@@ -404,6 +453,7 @@ io.on('connection', (socket) => {
   socket.on('audio_data', async (data) => {
     try {
       const { roomId, audio, service } = data;
+      const now = Date.now();
       
       if (service === 'google') {
         const stream = activeSessions.get(roomId);
@@ -416,20 +466,28 @@ io.on('connection', (socket) => {
           // Accumulate audio data
           audioBuffer = Buffer.concat([audioBuffer, Buffer.from(audio)]);
           
-          // Process with OpenAI when we have enough data
-          if (audioBuffer.length >= 32000) { // 2 seconds of audio at 16kHz
-            // Convert the audio buffer to proper format
-            const result = await processWithOpenAI(audioBuffer);
+          // Process when we have enough data and enough time has passed
+          if (audioBuffer.length >= 32000 && (now - lastProcessTime) >= minProcessInterval) {
+            // Get current room context for better transcription
+            const roomContext = roomContexts.get(roomId) || {};
+            const contextHint = Array.from(roomContext.topics || []).join(' ');
+            
+            // Process with enhanced Whisper
+            const result = await processWithHybrid(audioBuffer, 'openai');
             if (result && result.text) {
               socket.emit('transcription', {
                 text: result.text,
                 isFinal: true,
                 timestamp: new Date().toISOString(),
-                service: 'openai'
+                service: 'openai',
+                confidence: result.confidence || 0.9,
+                speakerTag: 0
               });
             }
-            // Clear the buffer after processing
+            
+            // Reset buffer and update time
             audioBuffer = Buffer.alloc(0);
+            lastProcessTime = now;
           }
         } catch (error) {
           console.error('OpenAI processing error:', error);
@@ -451,22 +509,6 @@ io.on('connection', (socket) => {
 
   socket.on('stop_transcription', (roomId) => {
     try {
-      if (accumulatedText.trim()) {
-        const transcription = {
-          text: accumulatedText.trim(),
-          isFinal: true,
-          timestamp: new Date().toISOString(),
-          speakerTag: 0,
-          socketId: socket.id
-        };
-        io.to(roomId).emit('transcription', transcription);
-        accumulatedText = '';
-      }
-      
-      if (accumulationTimer) {
-        clearTimeout(accumulationTimer);
-      }
-      
       const stream = activeSessions.get(roomId);
       if (stream) {
         stream.destroy();
@@ -490,9 +532,8 @@ io.on('connection', (socket) => {
         aiProcessingSessions.delete(roomId);
       }
 
-      // Reset accumulated context
-      accumulatedContext = [];
-      lastAIResponseTime = null;
+      // Clear room context
+      roomContexts.delete(roomId);
 
       console.log(`Stopped AI processing for room: ${roomId}`);
     } catch (error) {
@@ -502,8 +543,6 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
-    lastAIResponseTime = null; // Reset the timer
-    accumulatedContext = []; // Clear accumulated context
     if (recognizeStream) {
       recognizeStream.destroy();
     }
@@ -515,127 +554,96 @@ io.on('connection', (socket) => {
           clearTimeout(session.timer);
         }
         aiProcessingSessions.delete(roomId);
-      }
-    }
-  });
-
-  socket.on('transcription', (transcription) => {
-    if (transcription.isFinal) {
-      const now = Date.now();
-      
-      // Add to context
-      accumulatedContext.push(transcription.text);
-      
-      // Initialize last response time if not set
-      if (!lastAIResponseTime) {
-        lastAIResponseTime = now;
-      }
-      
-      // Only process if enough time has passed since last response
-      if (now - lastAIResponseTime >= ANALYSIS_INTERVAL) {
-        const context = accumulatedContext.join(' ');
-        if (context.trim()) {
-          analyzeContext(context, socket);
-          accumulatedContext = []; // Clear context after processing
-          lastAIResponseTime = now; // Update the last response time
-        }
+        roomContexts.delete(roomId);
       }
     }
   });
 
   socket.on('process_with_ai', async (data) => {
-    const now = Date.now();
+    const { text, roomId, agentType = 'MEETING_ANALYST' } = data;
     
-    if (!lastAIResponseTime || now - lastAIResponseTime >= ANALYSIS_INTERVAL) {
-        try {
-            const completion = await openai.chat.completions.create({
-                model: MEETING_PRESET.settings.model,
-                messages: [
-                    {
-                        role: "system",
-                        content: MEETING_PRESET.systemPrompt
-                    },
-                    {
-                        role: "user",
-                        content: data.text
-                    }
-                ],
-                max_tokens: MEETING_PRESET.settings.max_tokens,
-                temperature: MEETING_PRESET.settings.temperature,
-                frequency_penalty: MEETING_PRESET.settings.frequency_penalty,
-                presence_penalty: MEETING_PRESET.settings.presence_penalty
-            });
-
-            const analysis = completion.choices[0].message.content;
+    try {
+        const agent = AI_AGENTS[agentType] || AI_AGENTS.MEETING_ANALYST;
+        const result = await analyzeWithAgent(text, roomId, agent);
+        
             socket.emit('ai_response', { 
-                text: formatAIResponse(analysis),  // Format the response
-                context: data.text,
+            text: result.analysis,
+            context: text,
                 timestamp: new Date().toISOString(),
-                analysisType: 'detailed',
-                preset: 'meeting',
-                model: MEETING_PRESET.settings.model,
-                isFormatted: true  // Add flag to indicate formatted content
-            });
-            
-            lastAIResponseTime = now;
+            analysisType: 'enhanced',
+            agent: result.agent,
+            roomContext: result.roomContext,
+            tags: result.tags,
+            tagMetadata: result.tagMetadata,
+            isFormatted: true,
+            isFallback: result.isFallback
+        });
         } catch (error) {
-            console.error('Error with primary model:', error);
-            
-            // Try fallback model
-            try {
-                const fallbackCompletion = await openai.chat.completions.create({
-                    model: FALLBACK_PRESET.settings.model,
-                    messages: [
-                        {
-                            role: "system",
-                            content: MEETING_PRESET.systemPrompt
-                        },
-                        {
-                            role: "user",
-                            content: data.text
-                        }
-                    ],
-                    max_tokens: FALLBACK_PRESET.settings.max_tokens,
-                    temperature: FALLBACK_PRESET.settings.temperature,
-                    frequency_penalty: FALLBACK_PRESET.settings.frequency_penalty,
-                    presence_penalty: FALLBACK_PRESET.settings.presence_penalty
-                });
+        console.error('Error with AI processing:', error);
+        
+        // Send error response
+        socket.emit('ai_response', { 
+            text: formatAIResponse(
+                `Analysis temporarily unavailable. Key points from conversation:
+                • ${text.split('.').slice(0, 2).join('.')}
+                • Processing will resume shortly.`,
+                'System'
+            ),
+            isError: true,
+            isFormatted: true
+        });
+    }
+  });
 
-                socket.emit('ai_response', { 
-                    text: formatAIResponse(fallbackCompletion.choices[0].message.content),  // Format the response
-                    context: data.text,
-                    timestamp: new Date().toISOString(),
-                    analysisType: 'detailed',
-                    preset: 'meeting',
-                    model: 'fallback',
-                    isFormatted: true  // Add flag to indicate formatted content
-                });
-                
-                lastAIResponseTime = now;
-            } catch (fallbackError) {
-                console.error('Error with fallback model:', fallbackError);
-                
-                // Use mock response as final fallback
-                const mockResponse = `Technical Analysis Summary:
-                    Context: ${data.text.split(' ').slice(0, 10).join(' ')}...
-                    
-                    Key Technical Points:
-                    • Architecture Considerations
-                    • Implementation Strategy
-                    • Next Steps
-                    
-                    Note: Analysis systems currently experiencing issues. Will resume shortly.`;
-                
-                socket.emit('ai_response', { 
-                    text: formatAIResponse(mockResponse),  // Format the response
-                    context: data.text,
-                    isMock: true,
-                    preset: 'meeting',
-                    model: 'mock',
-                    isFormatted: true  // Add flag to indicate formatted content
-                });
-            }
-        }
+  // Add endpoint to get current room context
+  socket.on('get_room_context', (roomId) => {
+    const context = roomContexts.get(roomId);
+    if (context) {
+      socket.emit('room_context', {
+        roomId,
+        meetingType: context.meetingType,
+        participants: Array.from(context.participants),
+        topics: Array.from(context.topics),
+        projectsMentioned: Array.from(context.projectsMentioned),
+        actionItems: context.actionItems,
+        timestamp: new Date().toISOString()
+      });
+    }
+  });
+
+  // Add endpoint to switch AI agents
+  socket.on('switch_agent', (data) => {
+    const { roomId, agentType } = data;
+    console.log(`Switching to ${agentType} agent for room ${roomId}`);
+    socket.emit('agent_switched', { agentType });
+  });
+
+  // Add endpoint to manage tags
+  socket.on('add_custom_tag', async (data) => {
+    const { category, name, metadata } = data;
+    try {
+      await tagService.addCustomTag(category, name, metadata);
+      socket.emit('tag_added', { success: true, tag: `${category}:${name}` });
+    } catch (error) {
+      socket.emit('tag_error', { error: error.message });
+    }
+  });
+
+  socket.on('get_tag_analytics', async (roomId) => {
+    const context = roomContexts.get(roomId);
+    if (context && context.tags) {
+      const analytics = {
+        currentTags: Array.from(context.tags),
+        tagMetadata: Array.from(context.tags).map(tag => tagService.getTagMetadata(tag)),
+        frequency: {}
+      };
+      
+      // Count tag frequency in current session
+      context.tags.forEach(tag => {
+        analytics.frequency[tag] = (analytics.frequency[tag] || 0) + 1;
+      });
+      
+      socket.emit('tag_analytics', analytics);
     }
   });
 });
@@ -652,202 +660,23 @@ const startServer = (port) => {
     })
     .on('listening', () => {
       console.log(`Server running on port ${port}`);
+      console.log('Available AI Agents:', Object.keys(AI_AGENTS).join(', '));
     });
 };
 
-// Replace the existing server.listen() call with:
+// Start the server
 const PORT = process.env.PORT || 5002;
 startServer(PORT);
 
 // Handle process termination
 process.on('SIGTERM', () => {
   console.log('SIGTERM received. Cleaning up...');
-  proxyService.cleanup();
-  process.exit(0);
-});
-
-process.on('SIGINT', () => {
-  console.log('SIGINT received. Cleaning up...');
-  proxyService.cleanup();
-  process.exit(0);
-});
-
-// Add function to restart stream
-const restartStream = async (roomId) => {
-  try {
-    console.log('Restarting stream...');
-    const oldStream = activeSessions.get(roomId);
-    if (oldStream) {
-      oldStream.destroy();
-      activeSessions.delete(roomId);
+  for (const [_, stream] of activeSessions.entries()) {
+    if (stream) {
+      stream.destroy();
     }
-
-    // Send any accumulated text before restarting
-    if (currentSentence.trim()) {
-      const transcription = {
-        text: currentSentence.trim(),
-        isFinal: true,
-        timestamp: new Date().toISOString(),
-        speakerTag: 0,
-        socketId: socket.id
-      };
-      io.to(roomId).emit('transcription', transcription);
-      currentSentence = '';
-      wordCount = 0;
-    }
-
-    // Create new stream
-    await createNewStream(roomId);
-    isStreaming = false;
-  } catch (error) {
-    console.error('Error restarting stream:', error);
   }
-};
-
-// Update the stream creation
-const createNewStream = async (roomId) => {
-  const request = {
-    config: {
-      encoding: 'LINEAR16',
-      sampleRateHertz: 16000,
-      languageCode: 'en-US',
-      enableAutomaticPunctuation: true,
-      enableSpeakerDiarization: true,
-      diarizationSpeakerCount: 2,
-      model: 'latest_long',
-      useEnhanced: true,
-      metadata: {
-        interactionType: 'DISCUSSION',
-        industryNaicsCodeOfAudio: 813,
-        originalMediaType: 'AUDIO',
-      }
-    },
-    interimResults: true,
-    singleUtterance: false
-  };
-
-  recognizeStream = speechClient
-    .streamingRecognize(request)
-    .on('error', (error) => {
-      console.error('Speech recognition error:', error);
-      if (error.code === 11) { // Audio timeout error
-        restartStream(roomId);
-      }
-      socket.emit('transcription_error', { 
-        message: 'Speech recognition error',
-        details: error.message 
-      });
-    })
-    .on('data', (data) => {
-      if (data.results[0] && data.results[0].alternatives[0]) {
-        const transcript = data.results[0].alternatives[0].transcript;
-        
-        if (data.results[0].isFinal) {
-          const now = Date.now();
-          
-          // Add to accumulated text
-          accumulatedText += (accumulatedText ? ' ' : '') + transcript;
-          
-          // Count sentences in accumulated text
-          const sentences = accumulatedText.match(/[.!?]+/g);
-          sentenceCount = sentences ? sentences.length : 0;
-          
-          // Clear existing timer
-          if (accumulationTimer) {
-            clearTimeout(accumulationTimer);
-          }
-          
-          // Function to send accumulated text
-          const sendAccumulatedText = () => {
-            if (accumulatedText.trim()) {
-              const transcription = {
-                text: accumulatedText.trim(),
-                isFinal: true,
-                timestamp: new Date().toISOString(),
-                speakerTag: data.results[0].alternatives[0].words?.[0]?.speakerTag || 0,
-                socketId: socket.id
-              };
-              
-              console.log('Sending transcription:', transcription.text);
-              io.to(roomId).emit('transcription', transcription);
-              
-              accumulatedText = '';
-              sentenceCount = 0;
-              lastTimestamp = now;
-            }
-          };
-          
-          // Check if we should send the accumulated text
-          const shouldSend = 
-            // If we have enough sentences
-            sentenceCount >= MIN_SENTENCE_COUNT ||
-            // Or if we have accumulated a lot of text
-            accumulatedText.length > MAX_CHARS ||
-            // Or if it's been a while since our last transmission
-            (lastTimestamp && (now - lastTimestamp) > ACCUMULATION_TIMEOUT);
-          
-          if (shouldSend) {
-            sendAccumulatedText();
-          } else {
-            // Set timer to send accumulated text after delay
-            accumulationTimer = setTimeout(sendAccumulatedText, ACCUMULATION_TIMEOUT);
-          }
-        }
-      }
-    });
-
-  activeSessions.set(roomId, recognizeStream);
-  return recognizeStream;
-};
-
-// Update the analyzeContext function
-const analyzeContext = async (context, socket) => {
-    try {
-        const completion = await openai.chat.completions.create({
-            ...MEETING_PRESET.settings,
-            messages: [
-                {
-                    role: "system",
-                    content: MEETING_PRESET.systemPrompt
-                },
-                {
-                    role: "user",
-                    content: context
-                }
-            ]
-        });
-
-        socket.emit('ai_response', { 
-            text: formatAIResponse(completion.choices[0].message.content),  // Format the response
-            context: context,
-            timestamp: new Date().toISOString(),
-            segmentDuration: '20 seconds',
-            analysisType: 'detailed',
-            preset: 'meeting',
-            model: MEETING_PRESET.settings.model,
-            isFormatted: true  // Add flag to indicate formatted content
-        });
-    } catch (error) {
-        console.error('Error analyzing context:', error);
-        
-        if (error.code === 'insufficient_quota' || error.code === 'rate_limit_exceeded') {
-            const mockResponse = `Technical Analysis:
-                • Context: ${context.split(' ').slice(0, 5).join(' ')}...
-                • Requirements: Analyzing technical requirements...
-                • Solution: Will suggest appropriate tech stack
-                • Next Steps: Ready to provide specific implementation details`;
-            
-            socket.emit('ai_response', { 
-                text: formatAIResponse(mockResponse),  // Format the response
-                isMock: true,
-                context: context,
-                isFormatted: true  // Add flag to indicate formatted content
-            });
-        } else {
-            socket.emit('ai_response', { 
-                text: "Processing technical discussion. Will provide analysis in next segment.",
-                isError: true
-            });
-        }
-    }
-};
+  server.close(() => {
+    process.exit(0);
+  });
+});
