@@ -11,6 +11,7 @@ const {
   processWithHybrid,
   openai 
 } = require('./services/speechServices');
+const { createDeepgramStream, processAudioData } = require('./services/deepgramService');
 const { teamKnowledge } = require('./services/teamKnowledge');
 const { tagService } = require('./services/tagService');
 
@@ -424,6 +425,9 @@ io.on('connection', (socket) => {
       if (service === 'google') {
         recognizeStream = createGoogleStream(socket, roomId);
         activeSessions.set(roomId, recognizeStream);
+      } else if (service === 'deepgram') {
+        recognizeStream = createDeepgramStream(socket, roomId);
+        activeSessions.set(roomId, recognizeStream);
       }
 
       socket.join(roomId);
@@ -460,6 +464,25 @@ io.on('connection', (socket) => {
         if (stream && !stream.destroyed) {
           const audioBuffer = Buffer.from(audio);
           stream.write(audioBuffer);
+        }
+      } else if (service === 'deepgram') {
+        const stream = activeSessions.get(roomId);
+        if (stream) {
+          // Send raw 16-bit PCM bytes directly to Deepgram in reasonable chunks
+          try {
+            const buf = Buffer.from(audio);
+            const MAX_CHUNK = 3200; // 100ms at 16kHz, 16-bit mono (2 bytes/sample)
+            if (buf.length <= MAX_CHUNK) {
+              stream.send(buf);
+            } else {
+              for (let offset = 0; offset < buf.length; offset += MAX_CHUNK) {
+                const chunk = buf.subarray(offset, Math.min(offset + MAX_CHUNK, buf.length));
+                stream.send(chunk);
+              }
+            }
+          } catch (err) {
+            console.error('Error forwarding audio to Deepgram:', err);
+          }
         }
       } else if (service === 'openai') {
         try {
@@ -511,7 +534,13 @@ io.on('connection', (socket) => {
     try {
       const stream = activeSessions.get(roomId);
       if (stream) {
-        stream.destroy();
+        try {
+          if (typeof stream.finish === 'function') {
+            stream.finish();
+          } else if (typeof stream.destroy === 'function') {
+            stream.destroy();
+          }
+        } catch (_) {}
         activeSessions.delete(roomId);
       }
       socket.leave(roomId);
@@ -544,7 +573,13 @@ io.on('connection', (socket) => {
   socket.on('disconnect', () => {
     console.log('Client disconnected:', socket.id);
     if (recognizeStream) {
-      recognizeStream.destroy();
+      try {
+        if (typeof recognizeStream.finish === 'function') {
+          recognizeStream.finish();
+        } else if (typeof recognizeStream.destroy === 'function') {
+          recognizeStream.destroy();
+        }
+      } catch (_) {}
     }
     
     // Clean up AI processing on disconnect
@@ -673,7 +708,13 @@ process.on('SIGTERM', () => {
   console.log('SIGTERM received. Cleaning up...');
   for (const [_, stream] of activeSessions.entries()) {
     if (stream) {
-      stream.destroy();
+      try {
+        if (typeof stream.finish === 'function') {
+          stream.finish();
+        } else if (typeof stream.destroy === 'function') {
+          stream.destroy();
+        }
+      } catch (_) {}
     }
   }
   server.close(() => {

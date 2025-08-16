@@ -20,6 +20,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
+key.json
 # IDE and editor files
 .idea/
 .vscode/
@@ -73,5 +74,5 @@ logs
 
 # dotenv environment variable files
 .env*
-!.env.example server/key.json
-Archive.zip
+!.env.example
+key.json
