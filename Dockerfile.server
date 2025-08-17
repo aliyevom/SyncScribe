@@ -1,0 +1,15 @@
+# Server container (Node.js)
+FROM node:18-alpine
+
+ENV NODE_ENV=production
+WORKDIR /app/server
+
+# Install only server deps
+COPY server/package*.json ./
+RUN npm ci --omit=dev
+
+# Copy server source
+COPY server/ ./
+
+EXPOSE 5002
+CMD ["node", "index.js"]

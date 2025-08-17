@@ -28,6 +28,9 @@ const io = socketIo(server, {
 app.use(cors());
 app.use(express.json());
 
+// Simple health check for k8s probes
+app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+
 // Store active sessions
 const activeSessions = new Map();
 const aiProcessingSessions = new Map();
@@ -37,6 +40,8 @@ const ANALYSIS_INTERVAL = 20000; // 20 seconds
 
 // AI analysis context per room
 const roomContexts = new Map();
+// Rolling transcript memory per room for coherent, block-scoped analysis
+const transcriptsByRoom = new Map();
 
 // Specialized AI Agents
 const AI_AGENTS = {
@@ -154,6 +159,21 @@ const AI_AGENTS = {
       presence_penalty: 0.1
     }
   }
+  ,
+  SPOKEN_RESPONDER: {
+    name: 'Speaker Coach',
+    systemPrompt: `You generate natural, human-sounding spoken replies that can be read out loud as ONE flowing paragraph.
+Make it highly substantive and detailed (14–25 sentences), confident, and empathetic. Avoid lists, bullet points, headers, and section labels.
+Write in first-person "I" voice with smooth transitions and clear, readable phrasing suitable for speech.
+Offer recommendations inline as part of the narrative (no bullets). Do not apologize unless there is clear harm and do not ask questions unless explicitly requested.`,
+    settings: {
+      model: 'gpt-4o-mini',
+      temperature: 0.7,
+      max_tokens: 2000,
+      frequency_penalty: 0.2,
+      presence_penalty: 0.2
+    }
+  }
 };
 
 // Fallback configuration for rate limits
@@ -269,8 +289,62 @@ const formatContent = (content) => {
     return formatted;
 };
 
-// Enhanced AI analysis with team context
-const analyzeWithAgent = async (text, roomId, agent = AI_AGENTS.MEETING_ANALYST) => {
+// Convert structured JSON to HTML for consistent, professional formatting
+const formatStructuredResponse = (obj, agentName) => {
+    const safeArray = (v) => Array.isArray(v) ? v : (v ? [String(v)] : []);
+    const section = (title, items) => {
+        if (!items || (Array.isArray(items) && items.length === 0)) return '';
+        if (Array.isArray(items)) {
+            const lis = items.map(it => `<div class="bullet-item"><span class="bullet">•</span><span class="bullet-text">${String(it)}</span></div>`).join('');
+            return `<div class="analysis-section"><div class="section-header">${title}</div>${lis}</div>`;
+        }
+        return `<div class="analysis-section"><div class="section-header">${title}</div><p>${String(items)}</p></div>`;
+    };
+    let html = `<div class="ai-analysis"><div class="agent-header">${agentName}</div>`;
+    if (obj.summary) {
+        html += `<div class="analysis-section"><div class="section-header">Summary</div><p>${obj.summary}</p></div>`;
+    }
+    html += section('Key Points', safeArray(obj.key_points));
+    html += section('Talking Points for You', safeArray(obj.talking_points));
+    html += section('Questions to Ask', safeArray(obj.questions));
+    if (obj.action_items && Array.isArray(obj.action_items)) {
+        const list = obj.action_items.map(ai => {
+            if (ai && typeof ai === 'object') {
+                const parts = [ai.item || ai.text || ''];
+                if (ai.owner) parts.push(`Owner: ${ai.owner}`);
+                if (ai.due) parts.push(`Due: ${ai.due}`);
+                return parts.filter(Boolean).join(' — ');
+            }
+            return String(ai);
+        });
+        html += section('Action Items', list);
+    }
+    html += section('Risks', safeArray(obj.risks));
+    return html + '</div>';
+};
+
+// Remove repeated phrases and tidy whitespace for spoken paragraphs
+const cleanParagraph = (text) => {
+    if (!text) return '';
+    let t = text.replace(/\s+/g, ' ').trim();
+    // Remove duplicated sentence fragments like "This. This." or repeated clause starts
+    t = t.replace(/\b(\w+)(\s+\1){1,}\b/gi, '$1');
+    // Remove common filler leftovers
+    t = t.replace(/\s*\.(\s*\.)+/g, '.');
+    // Collapse repeated sentences
+    const seen = new Set();
+    const sentences = t.split(/(?<=[.!?])\s+/);
+    const filtered = sentences.filter(s => {
+        const key = s.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+    });
+    return filtered.join(' ').trim();
+};
+
+// Enhanced AI analysis with team context and rolling history
+const analyzeWithAgent = async (text, roomId, agent = AI_AGENTS.MEETING_ANALYST, recentHistory = []) => {
     try {
         // Get or create room context
         if (!roomContexts.has(roomId)) {
@@ -329,22 +403,40 @@ const analyzeWithAgent = async (text, roomId, agent = AI_AGENTS.MEETING_ANALYST)
             enhancedPrompt += `- Key Resources: ${onboardingContext.resources.join(', ')}\n\n`;
         }
         
-        // Call OpenAI with enhanced context
+        // Build short rolling context from recent history
+        const recentContext = recentHistory && recentHistory.length
+            ? `Recent context (most recent first):\n${recentHistory.map((t,i)=>`[${i+1}] ${t}`).join('\n')}\n\n`
+            : '';
+
+        // Ask for structured JSON to ensure consistent formatting across blocks
+        const jsonSchemaInstruction = `You must produce a single JSON object with the following shape:
+{
+  "summary": string,
+  "key_points": string[],
+  "talking_points": string[],
+  "questions": string[],
+  "action_items": Array<{"item": string, "owner"?: string, "due"?: string}>,
+  "risks": string[]
+}
+Do not include any extra commentary or markdown; JSON only.`;
+
         const completion = await openai.chat.completions.create({
             ...agent.settings,
+            response_format: { type: 'json_object' },
             messages: [
-                {
-                    role: "system",
-                    content: enhancedPrompt
-                },
-                {
-                    role: "user",
-                    content: `Analyze this conversation segment:\n\n${text}`
-                }
+                { role: 'system', content: enhancedPrompt },
+                { role: 'user', content: `${recentContext}${jsonSchemaInstruction}\n\nAnalyze this conversation segment as if in a live interview. Keep it concise and actionable. Segment:\n\n${text}` }
             ]
         });
-        
-        const analysis = completion.choices[0].message.content;
+
+        let analysisHtml;
+        try {
+            const json = JSON.parse(completion.choices[0].message.content || '{}');
+            analysisHtml = formatStructuredResponse(json, agent.name);
+        } catch (_) {
+            const fallbackText = completion.choices[0].message.content || '';
+            analysisHtml = formatAIResponse(fallbackText, agent.name);
+        }
         
         // Extract and store action items and decisions
         const actionItemMatches = analysis.matchAll(/(?:action item|todo|task):\s*([^.]+)/gi);
@@ -358,7 +450,7 @@ const analyzeWithAgent = async (text, roomId, agent = AI_AGENTS.MEETING_ANALYST)
         }
         
         return {
-            analysis: formatAIResponse(analysis, agent.name),
+            analysis: analysisHtml,
             agent: agent.name,
             context: contextAnalysis,
             tags: detectedTags,
@@ -402,8 +494,69 @@ const analyzeWithAgent = async (text, roomId, agent = AI_AGENTS.MEETING_ANALYST)
     }
 };
 
+// Speech-style single-paragraph reply using recent history for flow
+const analyzeSpokenReply = async (text, roomId, agent = AI_AGENTS.SPOKEN_RESPONDER, recentHistory = [], lensName) => {
+    try {
+        if (!roomContexts.has(roomId)) {
+            roomContexts.set(roomId, {
+                meetingType: null,
+                participants: new Set(),
+                topics: new Set(),
+                projectsMentioned: new Set(),
+                decisions: [],
+                actionItems: [],
+                tags: new Set()
+            });
+        }
+
+        const contextAnalysis = teamKnowledge.buildContextPrompt(text);
+        const tagContext = tagService.buildTagContext(tagService.getAllTags(text));
+
+        const recentContext = recentHistory && recentHistory.length
+            ? `Recent context (most recent first):\n${recentHistory.map((t,i)=>`[${i+1}] ${t}`).join('\n')}\n\n`
+            : '';
+
+        const system = `${agent.systemPrompt}\nLength: 600-900 words. ${lensName ? `Write with the lens of a ${lensName}, but keep a single flowing paragraph without bullets or headings.` : ''}`;
+        const user = `${recentContext}${tagContext ? `Tag hints:\n${tagContext}\n\n` : ''}Write a single-paragraph spoken response to this segment, continuing naturally from the context. Avoid headings, lists, or formatting.\nSegment:\n${text}`;
+
+        const run = async (settings) => openai.chat.completions.create({
+            ...settings,
+            messages: [ { role: 'system', content: system }, { role: 'user', content: user } ]
+        });
+
+        let completion;
+        try {
+            completion = await run(agent.settings);
+        } catch (e1) {
+            // Retry once with safer defaults
+            try {
+                const safer = { model: 'gpt-4o-mini', temperature: 0.6, max_tokens: 1600 };
+                completion = await run(safer);
+            } catch (e2) {
+                throw e2;
+            }
+        }
+
+        const raw = (completion.choices?.[0]?.message?.content || '').replace(/\n+/g, ' ').trim();
+        return { analysis: cleanParagraph(raw), agent: agent.name, isFallback: false };
+    } catch (error) {
+        console.error('Error with spoken reply agent:', error);
+        throw error;
+    }
+};
+
 // Socket.io connection handling
 io.on('connection', (socket) => {
+  // Support client requesting a stable room id across refresh via connection query
+  const desiredRoomId = (socket.handshake && socket.handshake.query && socket.handshake.query.desiredRoomId) || '';
+  if (desiredRoomId && typeof desiredRoomId === 'string') {
+    try {
+      // Override socket.id only for the purpose of room identity by aliasing
+      // We keep socket.id unchanged, but we use desiredRoomId as the room key everywhere
+      socket.join(desiredRoomId);
+      socket.emit('room_alias', { roomId: desiredRoomId });
+    } catch (_) {}
+  }
   console.log('Client connected:', socket.id);
   let recognizeStream = null;
   let currentService = null;
@@ -595,11 +748,20 @@ io.on('connection', (socket) => {
   });
 
   socket.on('process_with_ai', async (data) => {
-    const { text, roomId, agentType = 'MEETING_ANALYST' } = data;
+    const { text, roomId, agentType = 'MEETING_ANALYST', blockId } = data;
     
     try {
         const agent = AI_AGENTS[agentType] || AI_AGENTS.MEETING_ANALYST;
-        const result = await analyzeWithAgent(text, roomId, agent);
+        // Maintain rolling history per room
+        if (!transcriptsByRoom.has(roomId)) transcriptsByRoom.set(roomId, []);
+        const roomTranscripts = transcriptsByRoom.get(roomId);
+        roomTranscripts.push({ text, ts: Date.now(), blockId });
+        // Keep last 20 blocks for context
+        if (roomTranscripts.length > 20) roomTranscripts.splice(0, roomTranscripts.length - 20);
+        const recent = roomTranscripts.slice(-4, -0).reverse().map(t => t.text).slice(0, 3);
+
+        // Force essay/speech output for all selected agents by routing to spoken responder
+        const result = await analyzeSpokenReply(text, roomId, AI_AGENTS.SPOKEN_RESPONDER, recent, agent.name);
         
             socket.emit('ai_response', { 
             text: result.analysis,
@@ -610,22 +772,27 @@ io.on('connection', (socket) => {
             roomContext: result.roomContext,
             tags: result.tags,
             tagMetadata: result.tagMetadata,
-            isFormatted: true,
-            isFallback: result.isFallback
+            isFormatted: false,
+            isFallback: result.isFallback,
+            blockId
         });
         } catch (error) {
         console.error('Error with AI processing:', error);
         
-        // Send error response
-        socket.emit('ai_response', { 
-            text: formatAIResponse(
-                `Analysis temporarily unavailable. Key points from conversation:
-                • ${text.split('.').slice(0, 2).join('.')}
-                • Processing will resume shortly.`,
-                'System'
-            ),
-            isError: true,
-            isFormatted: true
+        // Send plain single-paragraph fallback (no bullets/headings)
+        const sanitized = (text || '')
+          .replace(/[\r\n]+/g, ' ')
+          .replace(/\s*[-•]\s+/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+        const paragraph = sanitized
+          ? `From this part of the conversation, I understand ${sanitized}. We will resume detailed analysis shortly; for now, treat this as an interim spoken summary.`
+          : 'The analysis service is temporarily unavailable and will resume shortly.';
+        socket.emit('ai_response', {
+          text: paragraph,
+          isError: true,
+          isFormatted: false,
+          agent: 'System'
         });
     }
   });

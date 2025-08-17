@@ -1,7 +1,7 @@
 # SyncScribe Makefile
 # Comprehensive project management commands
 
-.PHONY: help install start start-server start-client stop clean setup dev build test lint format update-team tag-meeting analyze-tags
+.PHONY: help install start start-server start-client stop clean setup dev build test lint format update-team tag-meeting analyze-tags monitor-server monitor-client list-server list-client online-server online-client offline-server offline-client online-all offline-all
 
 # Default target - show help
 help:
@@ -16,6 +16,18 @@ help:
 	@echo "  make setup         - Full setup (install + configure)"
 	@echo "  make dev           - Development mode with hot reload"
 	@echo "  make build         - Build production version"
+	@echo ""
+	@echo "Kubernetes monitoring:"
+	@echo "  make monitor-server - Tail server logs (syncscribe namespace)"
+	@echo "  make monitor-client - Tail client logs (syncscribe namespace)"
+	@echo "  make list-server    - List server pods"
+	@echo "  make list-client    - List client pods"
+	@echo "  make online-server  - Scale server to 1 replica"
+	@echo "  make online-client  - Scale client to 1 replica"
+	@echo "  make offline-server - Scale server to 0 replicas"
+	@echo "  make offline-client - Scale client to 0 replicas"
+	@echo "  make online-all     - Scale both to 1 replica"
+	@echo "  make offline-all    - Scale both to 0 replicas"
 	@echo ""
 	@echo "Team & Tag Management:"
 	@echo "  make update-team   - Update team data from example"
@@ -226,3 +238,47 @@ format:
 	@cd client && npx prettier --write "src/**/*.{js,jsx,ts,tsx,css,md}" || true
 	@cd server && npx prettier --write "**/*.{js,json,md}" || true
 	@echo "✅ Code formatted" 
+
+# Monitor server logs
+monitor-server:
+	@echo "📡 Tailing server logs... (Ctrl+C to stop)"
+	@kubectl -n syncscribe logs deploy/syncscribe-server -f --tail=100 --timestamps | sed -u 's/^/[server] /'
+
+# Monitor client logs
+monitor-client:
+	@echo "📡 Tailing client logs... (Ctrl+C to stop)"
+	@kubectl -n syncscribe logs deploy/syncscribe-client -f --tail=100 --timestamps | sed -u 's/^/[client] /'
+
+# List server pods
+list-server:
+	@kubectl -n syncscribe get pods -l app=syncscribe-server -o wide
+
+# List client pods
+list-client:
+	@kubectl -n syncscribe get pods -l app=syncscribe-client -o wide
+
+# Bring workloads online (replicas = 1)
+online-server:
+	@echo "🔌 Scaling server to 1 replica..."
+	@kubectl -n syncscribe scale deploy/syncscribe-server --replicas=1
+	@kubectl -n syncscribe rollout status deploy/syncscribe-server
+
+online-client:
+	@echo "🔌 Scaling client to 1 replica..."
+	@kubectl -n syncscribe scale deploy/syncscribe-client --replicas=1
+	@kubectl -n syncscribe rollout status deploy/syncscribe-client
+
+online-all: online-server online-client
+
+# Take workloads offline (replicas = 0)
+offline-server:
+	@echo "🛑 Scaling server to 0 replicas..."
+	@kubectl -n syncscribe scale deploy/syncscribe-server --replicas=0
+	@kubectl -n syncscribe get deploy/syncscribe-server
+
+offline-client:
+	@echo "🛑 Scaling client to 0 replicas..."
+	@kubectl -n syncscribe scale deploy/syncscribe-client --replicas=0
+	@kubectl -n syncscribe get deploy/syncscribe-client
+
+offline-all: offline-client offline-server

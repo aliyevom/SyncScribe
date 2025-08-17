@@ -120,10 +120,26 @@ class TeamKnowledgeBase {
       const customData = JSON.parse(data);
       
       // Merge custom data with defaults
-      this.teamData = {
+      const merged = {
         ...this.teamData,
         ...customData
       };
+
+      // Normalize teamMembers to a Map (the rest of code expects a Map)
+      if (merged.teamMembers && !(merged.teamMembers instanceof Map)) {
+        const entries = Array.isArray(merged.teamMembers)
+          ? merged.teamMembers.map((m, idx) => [String(idx), m])
+          : Object.entries(merged.teamMembers);
+        merged.teamMembers = new Map(entries);
+      }
+
+      // Ensure nested collections exist
+      merged.currentProjects = merged.currentProjects || [];
+      merged.glossary = merged.glossary || {};
+      merged.organization = merged.organization || this.teamData.organization;
+      merged.meetingPatterns = merged.meetingPatterns || this.teamData.meetingPatterns;
+
+      this.teamData = merged;
       
       console.log('Team knowledge base loaded successfully');
     } catch (error) {

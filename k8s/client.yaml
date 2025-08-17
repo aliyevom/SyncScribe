@@ -1,0 +1,38 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: syncscribe-client
+  namespace: syncscribe
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: syncscribe-client
+  template:
+    metadata:
+      labels:
+        app: syncscribe-client
+    spec:
+      containers:
+        - name: client
+          image: REPLACE_CLIENT_IMAGE
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 80
+          env:
+            - name: PUBLIC_SERVER_URL
+              value: "http://syncscribe-server.syncscribe.svc.cluster.local:5002"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: syncscribe-client
+  namespace: syncscribe
+spec:
+  type: LoadBalancer
+  selector:
+    app: syncscribe-client
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
