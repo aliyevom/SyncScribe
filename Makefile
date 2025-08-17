@@ -27,7 +27,7 @@ help:
 	@echo "  make offline-server - Scale server to 0 replicas"
 	@echo "  make offline-client - Scale client to 0 replicas"
 	@echo "  make online-all     - Scale both to 1 replica"
-	@echo "  make offline-all    - Scale both to 0 replicas"
+	@echo "  make offline-all    - Scale both to 0 replicas and remove LB/Ingress"
 	@echo ""
 	@echo "Team & Tag Management:"
 	@echo "  make update-team   - Update team data from example"
@@ -269,6 +269,12 @@ online-client:
 	@kubectl -n syncscribe rollout status deploy/syncscribe-client
 
 online-all: online-server online-client
+	@echo "🔄 Restoring external access (Service/Ingress)..."
+	@if [ -f .k8s-tmp/server.yaml ]; then echo "Applying .k8s-tmp/server.yaml"; kubectl -n syncscribe apply -f .k8s-tmp/server.yaml; else echo "Applying k8s/server.yaml"; kubectl -n syncscribe apply -f k8s/server.yaml; fi
+	@if [ -f .k8s-tmp/client.yaml ]; then echo "Applying .k8s-tmp/client.yaml"; kubectl -n syncscribe apply -f .k8s-tmp/client.yaml; else echo "Applying k8s/client.yaml"; kubectl -n syncscribe apply -f k8s/client.yaml; fi
+	@if [ -f k8s/ingress.yaml ]; then kubectl -n syncscribe apply -f k8s/ingress.yaml; else echo "Ingress manifest not found (skipped)"; fi
+	@echo "✅ Online completed. Current resources:"
+	@kubectl -n syncscribe get deploy,svc,ingress || true
 
 # Take workloads offline (replicas = 0)
 offline-server:
@@ -282,3 +288,8 @@ offline-client:
 	@kubectl -n syncscribe get deploy/syncscribe-client
 
 offline-all: offline-client offline-server
+	@echo "🧹 Removing external access (Service/Ingress)..."
+	@kubectl -n syncscribe get svc syncscribe-client >/dev/null 2>&1 && kubectl -n syncscribe delete svc syncscribe-client || echo "Service syncscribe-client not found (skipped)"
+	@kubectl -n syncscribe get ingress syncscribe-ingress >/dev/null 2>&1 && kubectl -n syncscribe delete ingress syncscribe-ingress || echo "Ingress syncscribe-ingress not found (skipped)"
+	@echo "✅ Offline completed. Remaining resources:"
+	@kubectl -n syncscribe get deploy,svc,ingress || true
