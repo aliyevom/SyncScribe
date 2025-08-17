@@ -2,7 +2,6 @@ name: SyncScribe Cluster Control
 
 on:
   pull_request:
-    branches: [ main ]
   workflow_dispatch:
     inputs:
       action:
@@ -52,7 +51,7 @@ jobs:
 
       - name: Verify cluster access
         run: |
-          kubectl version --short
+          kubectl version --client
           kubectl get ns
           kubectl -n "$K8S_NAMESPACE" get deploy || true
 
