@@ -1,0 +1,11 @@
+substitutions:
+  _SERVER_IMAGE: "us.gcr.io/meeting-trans-443019/syncscribe-server:latest"
+  _CLIENT_IMAGE: "us.gcr.io/meeting-trans-443019/syncscribe-client:latest"
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args: ["build","-f","Dockerfile.server","-t","$_SERVER_IMAGE","."]
+  - name: gcr.io/cloud-builders/docker
+    args: ["build","-f","Dockerfile.client","-t","$_CLIENT_IMAGE","."]
+images:
+  - "$_SERVER_IMAGE"
+  - "$_CLIENT_IMAGE"

@@ -73,7 +73,11 @@ logs
 
 # dotenv environment variable files
 .env*
-!.env.example server/key.json
+!.env.example
+
+# Secrets (do not commit)
+server/key.json
+k8s/secret.yaml
 Archive.zip
 
 QUICK_START.md
