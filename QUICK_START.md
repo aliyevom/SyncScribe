@@ -14,6 +14,26 @@ make start
 # Or start individually
 make start-server  # In terminal 1
 make start-client  # In terminal 2
+
+make monitor-server: 
+make monitor-client: 
+
+make list-server: 
+make list-client: 
+
+
+Kubernetes/GKE (optional)
+-------------------------
+1) Copy `k8s/secret.template.yaml` to `k8s/secret.yaml` and put your `DEEPGRAM_API_KEY`.
+2) Build and deploy (requires gcloud auth):
+```
+./scripts/deploy-gke.sh <project-id> <gcr-region> <cluster-name> <cluster-zone>
+```
+3) After the `syncscribe-client` service gets an external IP, open it in the browser.
+
+Notes
+- The URL path `/:roomId` is kept stable across refresh. When opening a URL with an existing room id, the client asks the server to use that id so a refresh will not create a new room.
+- In Kubernetes, scale server replicas as needed: `kubectl -n syncscribe scale deploy/syncscribe-server --replicas=3`.
 ```
 
 ### 2. Using the Setup Script
