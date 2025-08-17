@@ -33,10 +33,22 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Authenticate to Google Cloud
+      # Auth mode 1: JSON key (default)
+      - name: Authenticate to Google Cloud (JSON key)
+        if: ${{ secrets.GCP_SA_KEY != '' }}
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      # Auth mode 2: Workload Identity Federation (no keys)
+      - name: Authenticate to Google Cloud (WIF)
+        if: ${{ secrets.GCP_SA_KEY == '' && secrets.GCP_WIF_PROVIDER != '' && secrets.GCP_WIF_SERVICE_ACCOUNT != '' }}
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+          access_token_lifetime: 3600s
+          access_token_scopes: https://www.googleapis.com/auth/cloud-platform
 
       - name: Get GKE credentials
         uses: google-github-actions/get-gke-credentials@v2
