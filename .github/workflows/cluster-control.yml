@@ -1,0 +1,63 @@
+name: SyncScribe Cluster Control
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "Make target to run"
+        required: true
+        type: choice
+        options:
+          - online-all
+          - offline-all
+
+permissions:
+  contents: read
+
+env:
+  # Set via GitHub Repository Variables
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  GKE_CLUSTER: ${{ vars.GKE_CLUSTER }}
+  GKE_ZONE: ${{ vars.GKE_ZONE }}
+  K8S_NAMESPACE: syncscribe
+  USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
+
+jobs:
+  control:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Setup gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT_ID }}
+          install_components: true
+          components: 'gke-gcloud-auth-plugin'
+
+      - name: Get GKE credentials
+        run: |
+          gcloud container clusters get-credentials "$GKE_CLUSTER" --zone "$GKE_ZONE" --project "$GCP_PROJECT_ID"
+
+      - name: Verify cluster access
+        run: |
+          kubectl version --short
+          kubectl get ns
+          kubectl -n "$K8S_NAMESPACE" get deploy || true
+
+      - name: Run make target
+        run: |
+          echo "Running: make ${{ inputs.action }}"
+          make ${{ inputs.action }}
+
+      - name: Show resources
+        if: always()
+        run: |
+          kubectl -n "$K8S_NAMESPACE" get deploy,svc,ingress,pods -o wide || true
+
