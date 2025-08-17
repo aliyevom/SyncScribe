@@ -1,7 +1,6 @@
 name: SyncScribe Cluster Control
 
 on:
-  pull_request:
   workflow_dispatch:
     inputs:
       action:
@@ -11,6 +10,7 @@ on:
         options:
           - online-all
           - offline-all
+        default: online-all
 
 permissions:
   contents: read
@@ -27,8 +27,6 @@ env:
 jobs:
   control:
     runs-on: ubuntu-latest
-    # Skip for forked PRs where secrets are unavailable
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -58,11 +56,10 @@ jobs:
       - name: Determine action
         id: decide
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "target=${{ inputs.action }}" >> "$GITHUB_OUTPUT"
-          else
-            # Default for PRs
+          if [ -z "${{ inputs.action }}" ]; then
             echo "target=online-all" >> "$GITHUB_OUTPUT"
+          else
+            echo "target=${{ inputs.action }}" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Run make target
@@ -74,4 +71,33 @@ jobs:
         if: always()
         run: |
           kubectl -n "$K8S_NAMESPACE" get deploy,svc,ingress,pods -o wide || true
+
+      - name: Show external endpoints
+        if: always()
+        run: |
+          echo "Exposing services"
+          echo "Name               Type            Endpoints"
+          echo "-------------------------------------------------------"
+          # Ingress endpoint (IP or hostname)
+          INGRESS_ADDR=$(kubectl -n "$K8S_NAMESPACE" get ingress syncscribe-client -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+          if [ -z "$INGRESS_ADDR" ]; then
+            INGRESS_ADDR=$(kubectl -n "$K8S_NAMESPACE" get ingress syncscribe-client -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+          fi
+          if [ -n "$INGRESS_ADDR" ]; then
+            echo "syncscribe-client  Ingress         ${INGRESS_ADDR}/*"
+          else
+            echo "syncscribe-client  Ingress         (pending)"
+          fi
+          # LoadBalancer Service endpoint
+          LB_IP=$(kubectl -n "$K8S_NAMESPACE" get svc syncscribe-client -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true)
+          if [ -z "$LB_IP" ]; then
+            LB_IP=$(kubectl -n "$K8S_NAMESPACE" get svc syncscribe-client -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+          fi
+          LB_PORT=$(kubectl -n "$K8S_NAMESPACE" get svc syncscribe-client -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo 80)
+          if [ -n "$LB_IP" ]; then
+            echo "syncscribe-client  Load balancer   ${LB_IP}:${LB_PORT}"
+            echo "Browser URL: http://${LB_IP}/"
+          else
+            echo "syncscribe-client  Load balancer   (pending)"
+          fi
 
