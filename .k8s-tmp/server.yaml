@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: server
-          image: us.gcr.io/meeting-trans-443019/syncscribe-server:04fe522-1755414309
+          image: us.gcr.io/meeting-trans-443019/syncscribe-server:04fe522-1755416717
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 5002
@@ -29,6 +29,16 @@ spec:
                 secretKeyRef:
                   name: syncscribe-secrets
                   key: deepgram_api_key
+            - name: OPENAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: syncscribe-secrets
+                  key: openai_api_key
+            - name: ASSEMBLYAI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: syncscribe-secrets
+                  key: assemblyai_api_key
           readinessProbe:
             httpGet:
               path: /healthz

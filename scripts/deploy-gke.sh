@@ -23,6 +23,8 @@ fi
 
 IMAGE_SERVER="$REPO_HOST/$PROJECT_ID/syncscribe-server:$(git rev-parse --short HEAD)-$(date +%s)"
 IMAGE_CLIENT="$REPO_HOST/$PROJECT_ID/syncscribe-client:$(git rev-parse --short HEAD)-$(date +%s)"
+IMAGE_SERVER_LATEST="$REPO_HOST/$PROJECT_ID/syncscribe-server:latest"
+IMAGE_CLIENT_LATEST="$REPO_HOST/$PROJECT_ID/syncscribe-client:latest"
 
 echo "Building server image $IMAGE_SERVER"
 docker build -f Dockerfile.server -t "$IMAGE_SERVER" .
@@ -34,13 +36,20 @@ echo "Pushing images"
 docker push "$IMAGE_SERVER"
 docker push "$IMAGE_CLIENT"
 
+# Also tag and push :latest for stable manifests
+docker tag "$IMAGE_SERVER" "$IMAGE_SERVER_LATEST"
+docker tag "$IMAGE_CLIENT" "$IMAGE_CLIENT_LATEST"
+docker push "$IMAGE_SERVER_LATEST"
+docker push "$IMAGE_CLIENT_LATEST"
+
 # Get cluster credentials
 gcloud container clusters get-credentials "$CLUSTER" --zone "$ZONE" --project "$PROJECT_ID"
 
 # Prepare manifests
 mkdir -p .k8s-tmp
-sed "s|REPLACE_SERVER_IMAGE|$IMAGE_SERVER|g" k8s/server.yaml > .k8s-tmp/server.yaml
-sed "s|REPLACE_CLIENT_IMAGE|$IMAGE_CLIENT|g" k8s/client.yaml > .k8s-tmp/client.yaml
+# Render manifests against :latest (cluster always pulls the most recent build)
+sed "s|REPLACE_SERVER_IMAGE|$IMAGE_SERVER_LATEST|g" k8s/server.yaml > .k8s-tmp/server.yaml
+sed "s|REPLACE_CLIENT_IMAGE|$IMAGE_CLIENT_LATEST|g" k8s/client.yaml > .k8s-tmp/client.yaml
 
 # Apply
 kubectl apply -f k8s/namespace.yaml
