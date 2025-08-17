@@ -1,6 +1,8 @@
 name: SyncScribe Cluster Control
 
 on:
+  pull_request:
+    branches: [ main ]
   workflow_dispatch:
     inputs:
       action:
@@ -25,6 +27,8 @@ env:
 jobs:
   control:
     runs-on: ubuntu-latest
+    # Skip for forked PRs where secrets are unavailable
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -34,16 +38,12 @@ jobs:
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Setup gcloud
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ env.GCP_PROJECT_ID }}
-          install_components: true
-          components: 'gke-gcloud-auth-plugin'
-
       - name: Get GKE credentials
-        run: |
-          gcloud container clusters get-credentials "$GKE_CLUSTER" --zone "$GKE_ZONE" --project "$GCP_PROJECT_ID"
+        uses: google-github-actions/get-gke-credentials@v2
+        with:
+          cluster_name: ${{ env.GKE_CLUSTER }}
+          location: ${{ env.GKE_ZONE }}
+          project_id: ${{ env.GCP_PROJECT_ID }}
 
       - name: Verify cluster access
         run: |
@@ -51,10 +51,20 @@ jobs:
           kubectl get ns
           kubectl -n "$K8S_NAMESPACE" get deploy || true
 
+      - name: Determine action
+        id: decide
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "target=${{ inputs.action }}" >> "$GITHUB_OUTPUT"
+          else
+            # Default for PRs
+            echo "target=online-all" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run make target
         run: |
-          echo "Running: make ${{ inputs.action }}"
-          make ${{ inputs.action }}
+          echo "Running: make ${{ steps.decide.outputs.target }}"
+          make ${{ steps.decide.outputs.target }}
 
       - name: Show resources
         if: always()
