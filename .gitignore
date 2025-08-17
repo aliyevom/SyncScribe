@@ -75,3 +75,5 @@ logs
 .env*
 !.env.example server/key.json
 Archive.zip
+
+QUICK_START.md
