@@ -21,11 +21,47 @@ echo ""
 
 # Stop containers
 echo -e "${YELLOW}Step 1: Stopping containers...${NC}"
-gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command "
-    cd ~/meeting-transcriber &&
-    sudo docker-compose down &&
-    echo '✓ Containers stopped'
-"
+# Use --quiet to avoid SSH key prompts, and --impersonate-service-account if set
+SSH_OPTS="--zone=$ZONE --quiet"
+if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
+    SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
+fi
+gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
+    # Find docker-compose.yml location
+    COMPOSE_DIR=""
+    if [ -f ~/meeting-transcriber/docker-compose.yml ]; then
+        COMPOSE_DIR=~/meeting-transcriber
+    elif [ -f ~/docker-compose.yml ]; then
+        COMPOSE_DIR=~
+    else
+        # Try to find docker-compose.yml
+        COMPOSE_FILE=$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1)
+        if [ -n "$COMPOSE_FILE" ] && [ -f "$COMPOSE_FILE" ]; then
+            COMPOSE_DIR="$(dirname "$COMPOSE_FILE")"
+        fi
+    fi
+    
+    if [ -z "$COMPOSE_DIR" ]; then
+        echo "⚠ No docker-compose.yml found - application may not be deployed yet"
+        echo "Checking if any containers are running..."
+        RUNNING_CONTAINERS=$(sudo docker ps -q 2>/dev/null | wc -l)
+        if [ "$RUNNING_CONTAINERS" -gt 0 ]; then
+            echo "Found $RUNNING_CONTAINERS running container(s), stopping them..."
+            sudo docker stop $(sudo docker ps -q) 2>/dev/null || true
+            echo "✓ Containers stopped"
+        else
+            echo "✓ No containers running - application is already offline"
+        fi
+    else
+        cd "$COMPOSE_DIR"
+        echo "Found docker-compose.yml in: $COMPOSE_DIR"
+        sudo docker-compose down 2>/dev/null || {
+            echo "⚠ docker-compose down failed, trying to stop containers directly..."
+            sudo docker stop $(sudo docker ps -q) 2>/dev/null || true
+        }
+        echo "✓ Containers stopped"
+    fi
+'
 
 echo -e "${GREEN}✓ Application is now offline${NC}"
 

@@ -1,5 +1,29 @@
 name: SyncScribe VM Control
 
+# SETUP INSTRUCTIONS:
+# 1. Add GitHub Repository Variables (Settings > Secrets and variables > Actions > Variables):
+#    - VM_NAME: syncscribe-vm (optional, has default)
+#    - VM_ZONE: us-central1-a (optional, has default)
+#    - REACT_APP_SERVER_URL: https://syncscribe.app (optional, has default)
+#
+# 2. Add GitHub Repository Secrets (Settings > Secrets and variables > Actions > Secrets):
+#    - OPENAI_API_KEY: Your OpenAI API key
+#    - DEEPGRAM_API_KEY: Your Deepgram API key
+#    - ASSEMBLYAI_API_KEY: Your AssemblyAI API key
+#    - GCP_WIF_PROVIDER: Workload Identity Federation provider
+#    - GCP_WIF_SERVICE_ACCOUNT: Service account email for WIF
+#
+# 3. Grant service account permissions (GCP_WIF_SERVICE_ACCOUNT secret):
+#    gcloud projects add-iam-policy-binding meeting-trans-443019 \
+#      --member="serviceAccount:SERVICE_ACCOUNT_EMAIL" \
+#      --role="roles/compute.instanceAdmin.v1"
+#
+# 4. Required permissions:
+#    - compute.instances.get
+#    - compute.instances.start
+#    - compute.instances.stop
+#    - compute.instances.use (for SSH)
+
 on:
   workflow_dispatch:
     inputs:
@@ -22,6 +46,8 @@ env:
   VM_NAME: ${{ vars.VM_NAME || 'syncscribe-vm' }}
   VM_ZONE: ${{ vars.VM_ZONE || 'us-central1-a' }}
   USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
+  # VM's service account (default compute service account)
+  VM_SERVICE_ACCOUNT: "840029787447-compute@developer.gserviceaccount.com"
 
 jobs:
   vm-control:
@@ -44,15 +70,32 @@ jobs:
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Verify VM access
+      - name: Verify VM access and permissions
         run: |
-          echo "Verifying VM access..."
-          gcloud compute instances describe "$VM_NAME" \
+          echo "Verifying VM access and permissions..."
+          if gcloud compute instances describe "$VM_NAME" \
             --zone="$VM_ZONE" \
             --project="$GCP_PROJECT_ID" \
-            --format="get(status,networkInterfaces[0].accessConfigs[0].natIP)" || {
-            echo "Warning: Could not access VM. It may be stopped."
-          }
+            --format="get(status,networkInterfaces[0].accessConfigs[0].natIP)" 2>&1; then
+            echo "✓ VM access verified"
+          else
+            echo "❌ Error: Service account lacks required permissions"
+            echo ""
+            echo "Required permissions:"
+            echo "  - compute.instances.get"
+            echo "  - compute.instances.start"
+            echo "  - compute.instances.stop"
+            echo "  - compute.instances.use (for SSH)"
+            echo ""
+            echo "Grant these permissions to the service account:"
+            echo "  ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}"
+            echo ""
+            echo "Or assign the 'Compute Instance Admin' role:"
+            echo "  gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \\"
+            echo "    --member='serviceAccount:${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}' \\"
+            echo "    --role='roles/compute.instanceAdmin.v1'"
+            exit 1
+          fi
 
       - name: Make scripts executable
         run: |
@@ -70,6 +113,8 @@ jobs:
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
           export STOP_VM="$STOP_VM"
+          # Impersonate VM's service account for SSH access
+          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
           ./scripts/deploy-offline.sh
 
       - name: Run deploy-online
@@ -77,10 +122,30 @@ jobs:
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+          GITHUB_REF: ${{ github.ref }}
+          DEPLOY_CODE: "true"
+          # API Keys from GitHub Secrets (will be injected into .env file on VM)
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
+          REACT_APP_SERVER_URL: ${{ vars.REACT_APP_SERVER_URL || 'https://syncscribe.app' }}
         run: |
           echo "Running deploy-online.sh..."
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
+          export GITHUB_REPOSITORY="$GITHUB_REPOSITORY"
+          export GITHUB_WORKSPACE="$GITHUB_WORKSPACE"
+          export GITHUB_REF="$GITHUB_REF"
+          export DEPLOY_CODE="$DEPLOY_CODE"
+          # Export API keys for .env file creation
+          export OPENAI_API_KEY="$OPENAI_API_KEY"
+          export DEEPGRAM_API_KEY="$DEEPGRAM_API_KEY"
+          export ASSEMBLYAI_API_KEY="$ASSEMBLYAI_API_KEY"
+          export REACT_APP_SERVER_URL="$REACT_APP_SERVER_URL"
+          # Impersonate VM's service account for SSH access
+          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
           ./scripts/deploy-online.sh
 
       - name: Show VM status
@@ -99,13 +164,25 @@ jobs:
 
       - name: Show container status
         if: always() && inputs.action == 'deploy-online'
+        env:
+          CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ env.VM_SERVICE_ACCOUNT }}
         run: |
           echo "=== Container Status ==="
-          gcloud compute ssh "$VM_NAME" \
-            --zone="$VM_ZONE" \
+          SSH_OPTS="--zone=$VM_ZONE --quiet"
+          if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
+            SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
+          fi
+          if gcloud compute ssh "$VM_NAME" $SSH_OPTS \
             --project="$GCP_PROJECT_ID" \
-            --command="cd ~/meeting-transcriber && sudo docker-compose ps 2>&1 || echo 'Containers not running'" || \
-          echo "Could not check container status (VM may be stopped)"
+            --command="cd ~/meeting-transcriber && sudo docker-compose ps 2>&1" 2>&1; then
+            echo "✓ Container status retrieved"
+          else
+            echo "⚠ Could not check container status"
+            echo "  This may be due to:"
+            echo "  - VM is still starting up"
+            echo "  - SSH connection issues"
+            echo "  - Missing iam.serviceAccountUser permission"
+          fi
 
       - name: Show DNS status
         if: always() && inputs.action == 'deploy-online'

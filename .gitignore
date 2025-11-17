@@ -77,6 +77,8 @@ env.example
 
 # Documentation (markdown files)
 *.md
+# Except setup guides in .github
+!.github/*.md
 
 # Secrets (do not commit)
 server/key.json
