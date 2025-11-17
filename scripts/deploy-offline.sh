@@ -28,23 +28,39 @@ if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
 fi
 gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     # Find docker-compose.yml location
+    COMPOSE_DIR=""
     if [ -f ~/meeting-transcriber/docker-compose.yml ]; then
-        cd ~/meeting-transcriber
+        COMPOSE_DIR=~/meeting-transcriber
     elif [ -f ~/docker-compose.yml ]; then
-        cd ~
+        COMPOSE_DIR=~
     else
         # Try to find docker-compose.yml
         COMPOSE_FILE=$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1)
         if [ -n "$COMPOSE_FILE" ] && [ -f "$COMPOSE_FILE" ]; then
-            cd "$(dirname "$COMPOSE_FILE")"
-        else
-            echo "Error: Could not find docker-compose.yml"
-            echo "Searched in: ~/meeting-transcriber, ~/, and ~/*"
-            exit 1
+            COMPOSE_DIR="$(dirname "$COMPOSE_FILE")"
         fi
-    fi &&
-    sudo docker-compose down &&
-    echo "✓ Containers stopped"
+    fi
+    
+    if [ -z "$COMPOSE_DIR" ]; then
+        echo "⚠ No docker-compose.yml found - application may not be deployed yet"
+        echo "Checking if any containers are running..."
+        RUNNING_CONTAINERS=$(sudo docker ps -q 2>/dev/null | wc -l)
+        if [ "$RUNNING_CONTAINERS" -gt 0 ]; then
+            echo "Found $RUNNING_CONTAINERS running container(s), stopping them..."
+            sudo docker stop $(sudo docker ps -q) 2>/dev/null || true
+            echo "✓ Containers stopped"
+        else
+            echo "✓ No containers running - application is already offline"
+        fi
+    else
+        cd "$COMPOSE_DIR"
+        echo "Found docker-compose.yml in: $COMPOSE_DIR"
+        sudo docker-compose down 2>/dev/null || {
+            echo "⚠ docker-compose down failed, trying to stop containers directly..."
+            sudo docker stop $(sudo docker ps -q) 2>/dev/null || true
+        }
+        echo "✓ Containers stopped"
+    fi
 '
 
 echo -e "${GREEN}✓ Application is now offline${NC}"
