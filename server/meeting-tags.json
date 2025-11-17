@@ -44,22 +44,22 @@
         "aiPrompt": "This requires clarification or answers"
       }
     },
-    "department": {
-      "engineering": {
-        "experts": ["CTO", "Tech Lead", "Senior Engineers"],
-        "aiPrompt": "Technical discussion requiring engineering expertise"
+    "chapter": {
+      "infrastructure": {
+        "experts": ["Infrastructure Lead", "Platform Engineers"],
+        "aiPrompt": "Infrastructure and platform discussion using people-first language"
       },
-      "product": {
-        "experts": ["Product Manager", "Product Owner"],
-        "aiPrompt": "Product-related discussion about features or roadmap"
+      "software": {
+        "experts": ["Software Lead", "Development Engineers"],
+        "aiPrompt": "Software development discussion with clear, actionable points"
       },
-      "design": {
-        "experts": ["Design Lead", "UX Designer"],
-        "aiPrompt": "Design-related discussion about UI/UX"
+      "network": {
+        "experts": ["Network Lead", "Network Engineers"],
+        "aiPrompt": "Network engineering discussion focused on practical outcomes"
       },
-      "business": {
-        "experts": ["CEO", "Business Lead"],
-        "aiPrompt": "Business strategy or commercial discussion"
+      "platform": {
+        "experts": ["Platform Lead", "Chapter Leaders"],
+        "aiPrompt": "Platform strategy discussion emphasizing collaboration"
       }
     },
     "project": {

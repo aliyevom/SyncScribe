@@ -1,0 +1,34 @@
+---
+alwaysApply: true
+---
+# Operational Standards
+
+## Monitoring Requirements
+- All resources must emit logs to central Log Analytics
+- Define and track SLOs/SLIs for critical services
+- Implement automated alerting
+- Configure diagnostic settings on all services
+
+## Cost Management
+- Enforce tagging standards via policy
+- Set up budget alerts per subscription
+- Enable cost anomaly detection
+- Regular cost optimization reviews
+
+## Automation
+- Implement automated drift detection
+- Configure automated backup policies
+- Set up key rotation schedules
+- Enable auto-scaling where appropriate
+
+## Incident Management
+- Define clear escalation paths
+- Maintain runbooks for common issues
+- Implement blameless post-mortems
+- Regular disaster recovery testing
+
+## Documentation
+- Keep README files up to date
+- Document architecture decisions
+- Maintain deployment guides
+- Update troubleshooting guides

@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
+    "test": "mocha --require tests/setup.js --timeout 10000 tests/**/*.test.js",
+    "test:watch": "mocha tests/**/*.test.js --watch",
     "start": "node index.js",
     "dev": "nodemon index.js"
   },
@@ -33,6 +34,8 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
+    "chai": "^6.0.1",
+    "mocha": "^11.7.2",
     "nodemon": "^3.1.7",
     "worklet-loader": "^2.0.0"
   },

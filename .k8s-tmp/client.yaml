@@ -15,7 +15,7 @@ spec:
     spec:
       containers:
         - name: client
-          image: us.gcr.io/meeting-trans-443019/syncscribe-client:04fe522-1755416717
+          image: us.gcr.io/meeting-trans-443019/syncscribe-client:af9379b-1756526459
           imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 80

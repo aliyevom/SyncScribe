@@ -4,11 +4,18 @@ metadata:
   name: syncscribe-client
   namespace: syncscribe
   annotations:
-    kubernetes.io/ingress.class: "gce"
-    kubernetes.io/ingress.allow-http: "true"
+    kubernetes.io/ingress.global-static-ip-name: syncscribe-ip
+    networking.gke.io/managed-certificates: syncscribe-cert
 spec:
-  defaultBackend:
-    service:
-      name: syncscribe-client
-      port:
-        number: 80
+  ingressClassName: gce
+  rules:
+    - host: 34-144-248-122.nip.io
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: syncscribe-client
+                port:
+                  number: 80

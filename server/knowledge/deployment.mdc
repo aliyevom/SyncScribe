@@ -1,0 +1,33 @@
+---
+globs: *.tf,*.tfvars,*.json
+---
+# Deployment Standards
+
+## Infrastructure as Code Requirements
+1. All infrastructure changes must be made through IaC
+2. Use semantic versioning for all Platform/Modules
+3. Implement consistent module structure:
+   - main.tf
+   - variables.tf
+   - outputs.tf
+   - README.md with usage examples
+
+## Pipeline Requirements
+- Implement terraform fmt/validate/tflint checks
+- Run tfsec security scanning
+- Generate and review terraform plan
+- Require approvals for production changes
+- Use reusable workflows for common steps
+
+## Monitoring and Observability
+- Define SLOs for critical services
+- Implement cost anomaly detection
+- Set up drift detection jobs
+- Configure backup policies
+- Enable diagnostic settings by default
+
+## Resource Naming
+- Follow consistent naming conventions
+- Include environment identifier
+- Use approved abbreviations
+- Include resource type prefix

@@ -1,0 +1,28 @@
+---
+alwaysApply: true
+---
+# Security and Compliance Standards
+
+## Authentication Requirements
+- All GitHub Actions must use OIDC federation for Azure authentication
+- No static credentials or service principal secrets in pipelines
+- Use managed identities for all Azure service authentication
+- Implement PIM for elevated access
+
+## Network Security
+- All data services must use Private Endpoints
+- Centralize Private DNS zones in connectivity subscription
+- Implement Azure Firewall policy for egress control
+- Standardize NSG configurations via Platform/Modules
+
+## Policy Enforcement
+- New policies must start in audit mode before enforcement
+- All resources must emit logs to central Log Analytics
+- Mandatory tagging for cost allocation
+- Encryption required for all data at rest
+
+## Compliance Checks
+- Regular drift detection for infrastructure
+- Automated policy compliance scanning
+- CIS Azure benchmark alignment
+- Regular secret rotation and access reviews

@@ -1,0 +1,83 @@
+---
+alwaysApply: true
+description: "Writing standards for documentation and communication across the codebase"
+---
+# Writing Style Guide
+
+## Voice and Tone
+- Write in clear, direct language
+- Use active voice
+- Prefer positive phrasing
+- Address readers as "you"
+- Use contractions for warmth
+- Be specific and concrete
+
+## Documentation Standards
+1. READMEs must include:
+   - Clear purpose statement
+   - Setup instructions
+   - Usage examples
+   - Dependencies
+   - Troubleshooting guides
+
+2. Code comments should:
+   - Explain why, not what
+   - Document non-obvious decisions
+   - Include examples for complex logic
+   - Reference related documentation
+
+## Prohibited Language
+### Words to Avoid
+- "leverage" → use
+- "utilize" → use
+- "implement" → do
+- "robust" → strong
+- "seamless" → automatic
+- "innovative" → describe specific benefits
+- "best practices" → proven approaches
+- "blazing fast" → specify performance metrics
+
+### Phrases to Remove
+- "I think/I believe"
+- "Sort of/kind of"
+- "A lot/a little"
+- "We're excited to"
+- "The future of"
+- "By developers, for developers"
+
+## Technical Writing
+1. Module Documentation:
+   - Start with purpose and scope
+   - List prerequisites
+   - Show configuration examples
+   - Include error handling
+   - Document limitations
+
+2. Architecture Documentation:
+   - Use diagrams with explanations
+   - Define component relationships
+   - Explain design decisions
+   - Document trade-offs
+   - Include security considerations
+
+## Formatting Standards
+- Use sentence case for headings
+- Apply Oxford commas consistently
+- Use straight quotes (`) for code
+- Keep paragraphs focused and concise
+- Use bullet points for lists
+- Include specific examples
+
+## Examples and Evidence
+- Back claims with metrics
+- Use real service names
+- Include actual configuration snippets
+- Reference specific use cases
+- Document performance data
+
+## Version and Change Documentation
+- Write clear commit messages
+- Document breaking changes
+- Maintain changelog
+- Version documentation
+- Track deprecations
