@@ -70,57 +70,76 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
 echo -e "${YELLOW}Step 4: Ensuring code is deployed...${NC}"
 DEPLOY_CODE="${DEPLOY_CODE:-true}"
 if [ "$DEPLOY_CODE" = "true" ]; then
-    # Check if we're running from GitHub Actions (has GITHUB_REPOSITORY env var)
-    if [ -n "$GITHUB_REPOSITORY" ] && [ -n "$GITHUB_WORKSPACE" ]; then
-        echo -e "${YELLOW}Detected GitHub Actions environment - deploying code from repository...${NC}"
-        # Use gcloud compute scp to copy essential files
-        gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
-            if [ ! -d ~/meeting-transcriber ]; then
-                mkdir -p ~/meeting-transcriber
-            fi
-        ' || true
-        
-        # Copy essential files
-        echo "Copying docker-compose.yml..."
-        gcloud compute scp --zone="$ZONE" "$GITHUB_WORKSPACE/docker-compose.yml" "$VM_NAME":~/meeting-transcriber/docker-compose.yml 2>/dev/null || {
-            echo -e "${YELLOW}⚠ Could not copy docker-compose.yml via scp, trying git clone...${NC}"
-            # Fallback: clone repository
-            GITHUB_REPO_URL="https://github.com/$GITHUB_REPOSITORY.git"
-            gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
-                if [ ! -d ~/meeting-transcriber/.git ]; then
-                    echo 'Cloning repository...' &&
-                    rm -rf ~/meeting-transcriber &&
-                    git clone --depth 1 --branch ${GITHUB_REF#refs/heads/} '$GITHUB_REPO_URL' ~/meeting-transcriber 2>/dev/null || 
-                    git clone --depth 1 '$GITHUB_REPO_URL' ~/meeting-transcriber
-                else
-                    echo 'Repository exists, pulling latest changes...' &&
-                    cd ~/meeting-transcriber &&
-                    git pull || echo '⚠ Git pull failed, continuing with existing code'
-                fi
-            " || echo -e "${YELLOW}⚠ Could not deploy code via git clone${NC}"
-        }
+    # Determine repository and branch
+    if [ -n "$GITHUB_REPOSITORY" ]; then
+        GITHUB_REPO="$GITHUB_REPOSITORY"
+        # Extract branch from GITHUB_REF (e.g., refs/heads/vm-control-workflow -> vm-control-workflow)
+        if [ -n "$GITHUB_REF" ]; then
+            BRANCH="${GITHUB_REF#refs/heads/}"
+            BRANCH="${BRANCH#refs/tags/}"
+        else
+            BRANCH="main"
+        fi
     else
-        # Not in GitHub Actions - check if code exists, if not, try to clone
-        gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
-            if [ ! -f ~/meeting-transcriber/docker-compose.yml ] && [ ! -f ~/docker-compose.yml ]; then
-                echo "⚠ No docker-compose.yml found on VM"
-                echo "   Code needs to be deployed manually or via deploy-dev.sh"
-                echo "   Attempting to clone from GitHub..."
-                GITHUB_REPO="${GITHUB_REPO:-aliyevom/SyncScribe}"
-                BRANCH="${GITHUB_BRANCH:-main}"
-                if command -v git >/dev/null 2>&1; then
-                    rm -rf ~/meeting-transcriber
-                    git clone --depth 1 --branch "$BRANCH" "https://github.com/$GITHUB_REPO.git" ~/meeting-transcriber 2>/dev/null || {
-                        echo "⚠ Git clone failed. Please deploy code manually using:"
-                        echo "   ./scripts/deploy-dev.sh"
-                    }
-                else
-                    echo "⚠ Git not installed. Please deploy code manually using:"
-                    echo "   ./scripts/deploy-dev.sh"
-                fi
-            fi
-        ' || echo -e "${YELLOW}Warning: Could not check/deploy code${NC}"
+        GITHUB_REPO="${GITHUB_REPO:-aliyevom/SyncScribe}"
+        BRANCH="${GITHUB_BRANCH:-main}"
     fi
+    
+    GITHUB_REPO_URL="https://github.com/$GITHUB_REPO.git"
+    
+    echo "Repository: $GITHUB_REPO"
+    echo "Branch: $BRANCH"
+    
+    # Deploy code via git clone
+    gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
+        # Ensure git is installed
+        if ! command -v git >/dev/null 2>&1; then
+            echo 'Installing git...' &&
+            sudo apt-get update -qq >/dev/null 2>&1 &&
+            sudo apt-get install -y git >/dev/null 2>&1 || {
+                echo '❌ Failed to install git'
+                exit 1
+            }
+        fi &&
+        
+        # Clone or update repository
+        if [ ! -d ~/meeting-transcriber/.git ]; then
+            echo 'Cloning repository from GitHub...' &&
+            rm -rf ~/meeting-transcriber &&
+            git clone --depth 1 --branch '$BRANCH' '$GITHUB_REPO_URL' ~/meeting-transcriber 2>&1 || {
+                echo '⚠ Clone failed, trying main branch...' &&
+                git clone --depth 1 'https://github.com/$GITHUB_REPO.git' ~/meeting-transcriber 2>&1 || {
+                    echo '❌ Git clone failed'
+                    exit 1
+                }
+            } &&
+            echo '✓ Repository cloned'
+        else
+            echo 'Repository exists, pulling latest changes...' &&
+            cd ~/meeting-transcriber &&
+            git fetch origin 2>&1 &&
+            git checkout '$BRANCH' 2>/dev/null || git checkout main 2>/dev/null || true &&
+            git pull origin '$BRANCH' 2>&1 || git pull origin main 2>&1 || {
+                echo '⚠ Git pull failed, but continuing with existing code'
+            } &&
+            echo '✓ Repository updated'
+        fi &&
+        
+        # Verify docker-compose.yml exists
+        if [ ! -f ~/meeting-transcriber/docker-compose.yml ]; then
+            echo '❌ docker-compose.yml not found after deployment'
+            exit 1
+        else
+            echo '✓ docker-compose.yml found'
+        fi
+    " || {
+        echo -e "${RED}❌ Failed to deploy code${NC}"
+        echo -e "${YELLOW}The application code needs to be on the VM to start containers.${NC}"
+        echo -e "${YELLOW}Please deploy manually using: ./scripts/deploy-dev.sh${NC}"
+        exit 1
+    }
+    
+    echo -e "${GREEN}✓ Code deployment complete${NC}"
 else
     echo -e "${YELLOW}Skipping code deployment (DEPLOY_CODE=false)${NC}"
 fi
