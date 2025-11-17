@@ -103,17 +103,20 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         fi &&
         
         # Backup .env file if it exists (preserve API keys and configuration)
-        ENV_BACKUP=''
+        ENV_BACKUP_PATH=''
+        BACKUP_FILE=''
         if [ -f ~/meeting-transcriber/.env ]; then
             echo 'Backing up .env file...' &&
-            cp ~/meeting-transcriber/.env ~/.env.backup.$(date +%s) &&
-            ENV_BACKUP=~/meeting-transcriber/.env &&
-            echo '✓ .env file backed up'
+            BACKUP_FILE=~/.env.backup.$(date +%s) &&
+            cp ~/meeting-transcriber/.env \"\$BACKUP_FILE\" &&
+            ENV_BACKUP_PATH=\"\$BACKUP_FILE\" &&
+            echo '✓ .env file backed up to '\$BACKUP_FILE
         elif [ -f ~/.env ]; then
             echo 'Found .env in home directory, backing up...' &&
-            cp ~/.env ~/.env.backup.$(date +%s) &&
-            ENV_BACKUP=~/.env &&
-            echo '✓ .env file backed up'
+            BACKUP_FILE=~/.env.backup.$(date +%s) &&
+            cp ~/.env \"\$BACKUP_FILE\" &&
+            ENV_BACKUP_PATH=\"\$BACKUP_FILE\" &&
+            echo '✓ .env file backed up to '\$BACKUP_FILE
         else
             echo '⚠ No .env file found - API keys may be missing'
         fi &&
@@ -152,15 +155,15 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         fi &&
         
         # Restore .env file if it was backed up
-        if [ -n \"\$ENV_BACKUP\" ] && [ -f \"\$ENV_BACKUP\" ]; then
-            echo 'Restoring .env file...' &&
-            cp \"\$ENV_BACKUP\" ~/meeting-transcriber/.env &&
+        if [ -n \"\$ENV_BACKUP_PATH\" ] && [ -f \"\$ENV_BACKUP_PATH\" ]; then
+            echo 'Restoring .env file from backup...' &&
+            cp \"\$ENV_BACKUP_PATH\" ~/meeting-transcriber/.env &&
             echo '✓ .env file restored'
-        elif [ -n \"\$ENV_BACKUP\" ]; then
-            # Try to find the backup file
+        else
+            # Try to find the latest backup file
             LATEST_BACKUP=\$(ls -t ~/.env.backup.* 2>/dev/null | head -1) &&
             if [ -n \"\$LATEST_BACKUP\" ] && [ -f \"\$LATEST_BACKUP\" ]; then
-                echo 'Restoring .env file from backup...' &&
+                echo 'Restoring .env file from latest backup...' &&
                 cp \"\$LATEST_BACKUP\" ~/meeting-transcriber/.env &&
                 echo '✓ .env file restored from backup'
             else
