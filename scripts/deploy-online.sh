@@ -102,6 +102,22 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             }
         fi &&
         
+        # Backup .env file if it exists (preserve API keys and configuration)
+        ENV_BACKUP=''
+        if [ -f ~/meeting-transcriber/.env ]; then
+            echo 'Backing up .env file...' &&
+            cp ~/meeting-transcriber/.env ~/.env.backup.$(date +%s) &&
+            ENV_BACKUP=~/meeting-transcriber/.env &&
+            echo '✓ .env file backed up'
+        elif [ -f ~/.env ]; then
+            echo 'Found .env in home directory, backing up...' &&
+            cp ~/.env ~/.env.backup.$(date +%s) &&
+            ENV_BACKUP=~/.env &&
+            echo '✓ .env file backed up'
+        else
+            echo '⚠ No .env file found - API keys may be missing'
+        fi &&
+        
         # Clone or update repository
         if [ ! -d ~/meeting-transcriber/.git ]; then
             echo 'Cloning repository from GitHub...' &&
@@ -135,12 +151,47 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             echo '✓ Repository updated'
         fi &&
         
+        # Restore .env file if it was backed up
+        if [ -n \"\$ENV_BACKUP\" ] && [ -f \"\$ENV_BACKUP\" ]; then
+            echo 'Restoring .env file...' &&
+            cp \"\$ENV_BACKUP\" ~/meeting-transcriber/.env &&
+            echo '✓ .env file restored'
+        elif [ -n \"\$ENV_BACKUP\" ]; then
+            # Try to find the backup file
+            LATEST_BACKUP=\$(ls -t ~/.env.backup.* 2>/dev/null | head -1) &&
+            if [ -n \"\$LATEST_BACKUP\" ] && [ -f \"\$LATEST_BACKUP\" ]; then
+                echo 'Restoring .env file from backup...' &&
+                cp \"\$LATEST_BACKUP\" ~/meeting-transcriber/.env &&
+                echo '✓ .env file restored from backup'
+            else
+                echo '⚠ Could not restore .env file - API keys may be missing'
+            fi
+        fi &&
+        
         # Verify docker-compose.yml exists
         if [ ! -f ~/meeting-transcriber/docker-compose.yml ]; then
             echo '❌ docker-compose.yml not found after deployment'
             exit 1
         else
             echo '✓ docker-compose.yml found'
+        fi &&
+        
+        # Check if .env exists and has content
+        if [ -f ~/meeting-transcriber/.env ]; then
+            ENV_SIZE=\$(wc -c < ~/meeting-transcriber/.env) &&
+            if [ \"\$ENV_SIZE\" -gt 10 ]; then
+                echo '✓ .env file exists and has content'
+            else
+                echo '⚠ .env file exists but appears empty or incomplete'
+            fi
+        else
+            echo '⚠ WARNING: .env file not found - API keys are missing!'
+            echo '   The application will not work without API keys.'
+            echo '   Please create ~/meeting-transcriber/.env with required variables:'
+            echo '   - OPENAI_API_KEY'
+            echo '   - DEEPGRAM_API_KEY'
+            echo '   - ASSEMBLYAI_API_KEY'
+            echo '   - REACT_APP_SERVER_URL'
         fi
     " || {
         echo -e "${RED}❌ Failed to deploy code${NC}"
