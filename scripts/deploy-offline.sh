@@ -10,8 +10,9 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-VM_NAME="syncscribe-vm"
-ZONE="us-central1-a"
+VM_NAME="${VM_NAME:-syncscribe-vm}"
+ZONE="${ZONE:-us-central1-a}"
+STOP_VM="${STOP_VM:-false}"
 
 echo -e "${BLUE}======================================${NC}"
 echo -e "${BLUE}  SyncScribe Offline Mode${NC}"
@@ -29,9 +30,15 @@ gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command "
 echo -e "${GREEN}✓ Application is now offline${NC}"
 
 # Ask if user wants to stop the VM (saves more money)
-echo ""
-read -p "Do you want to STOP the VM to save costs? (y/N): " -n 1 -r
-echo
+# Skip prompt if STOP_VM env var is set (for CI/CD)
+if [ "$STOP_VM" = "true" ]; then
+    REPLY="y"
+else
+    echo ""
+    read -p "Do you want to STOP the VM to save costs? (y/N): " -n 1 -r
+    echo
+fi
+
 if [[ $REPLY =~ ^[Yy]$ ]]; then
     echo -e "${YELLOW}Step 2: Stopping VM...${NC}"
     gcloud compute instances stop "$VM_NAME" --zone="$ZONE"
