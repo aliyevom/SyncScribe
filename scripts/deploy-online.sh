@@ -113,6 +113,12 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                     exit 1
                 }
             } &&
+            cd ~/meeting-transcriber &&
+            # Initialize submodules if .gitmodules exists
+            if [ -f .gitmodules ]; then
+                echo 'Initializing submodules...' &&
+                git submodule update --init --recursive --depth 1 2>&1 || echo '⚠ Submodule init failed, continuing...'
+            fi &&
             echo '✓ Repository cloned'
         else
             echo 'Repository exists, pulling latest changes...' &&
@@ -122,6 +128,10 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             git pull origin '$BRANCH' 2>&1 || git pull origin main 2>&1 || {
                 echo '⚠ Git pull failed, but continuing with existing code'
             } &&
+            # Update submodules if they exist
+            if [ -f .gitmodules ]; then
+                git submodule update --init --recursive --depth 1 2>&1 || echo '⚠ Submodule update failed, continuing...'
+            fi &&
             echo '✓ Repository updated'
         fi &&
         
