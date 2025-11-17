@@ -69,7 +69,23 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
 # Start containers
 echo -e "${YELLOW}Step 4: Starting containers...${NC}"
 gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
-    cd ~/meeting-transcriber &&
+    # Find docker-compose.yml location
+    if [ -f ~/meeting-transcriber/docker-compose.yml ]; then
+        cd ~/meeting-transcriber
+    elif [ -f ~/docker-compose.yml ]; then
+        cd ~
+    elif [ -f /home/\$(whoami)/meeting-transcriber/docker-compose.yml ]; then
+        cd /home/\$(whoami)/meeting-transcriber
+    else
+        # Try to find docker-compose.yml
+        COMPOSE_DIR=\$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1 | xargs dirname)
+        if [ -n \"\$COMPOSE_DIR\" ]; then
+            cd \"\$COMPOSE_DIR\"
+        else
+            echo 'Error: docker-compose.yml not found. Please run deploy-dev.sh first.'
+            exit 1
+        fi
+    fi &&
     
     # Check if docker-compose.yml exists
     if [ ! -f docker-compose.yml ]; then
