@@ -59,37 +59,35 @@ fi
 
 # Start Docker daemon if needed
 echo -e "${YELLOW}Step 3: Ensuring Docker is running...${NC}"
-gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
+gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     sudo systemctl start docker 2>/dev/null || true &&
     sudo systemctl enable docker 2>/dev/null || true &&
     sleep 3 &&
-    sudo docker ps > /dev/null 2>&1 && echo '✓ Docker daemon ready' || echo '⚠ Docker may not be fully ready'
-" || echo -e "${YELLOW}Warning: Could not verify Docker status${NC}"
+    sudo docker ps > /dev/null 2>&1 && echo "✓ Docker daemon ready" || echo "⚠ Docker may not be fully ready"
+' || echo -e "${YELLOW}Warning: Could not verify Docker status${NC}"
 
 # Start containers
 echo -e "${YELLOW}Step 4: Starting containers...${NC}"
-gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
+gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     # Find docker-compose.yml location
     if [ -f ~/meeting-transcriber/docker-compose.yml ]; then
         cd ~/meeting-transcriber
     elif [ -f ~/docker-compose.yml ]; then
         cd ~
-    elif [ -f /home/\$(whoami)/meeting-transcriber/docker-compose.yml ]; then
-        cd /home/\$(whoami)/meeting-transcriber
     else
         # Try to find docker-compose.yml
-        COMPOSE_DIR=\$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1 | xargs dirname)
-        if [ -n \"\$COMPOSE_DIR\" ]; then
-            cd \"\$COMPOSE_DIR\"
+        COMPOSE_DIR=$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1 | xargs dirname)
+        if [ -n "$COMPOSE_DIR" ]; then
+            cd "$COMPOSE_DIR"
         else
-            echo 'Error: docker-compose.yml not found. Please run deploy-dev.sh first.'
+            echo "Error: docker-compose.yml not found. Please run deploy-dev.sh first."
             exit 1
         fi
     fi &&
     
     # Check if docker-compose.yml exists
     if [ ! -f docker-compose.yml ]; then
-        echo 'Error: docker-compose.yml not found. Please run deploy-dev.sh first.'
+        echo "Error: docker-compose.yml not found. Please run deploy-dev.sh first."
         exit 1
     fi &&
     
@@ -147,17 +145,17 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
 " $SSH_OPTS || {
     echo -e "${RED}Error: Failed to start services${NC}"
     echo -e "${YELLOW}Checking container status...${NC}"
-    gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
+    gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
         # Find docker-compose.yml location
         if [ -f ~/meeting-transcriber/docker-compose.yml ]; then
             cd ~/meeting-transcriber
         elif [ -f ~/docker-compose.yml ]; then
             cd ~
         else
-            COMPOSE_DIR=\$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1 | xargs dirname)
-            [ -n \"\$COMPOSE_DIR\" ] && cd \"\$COMPOSE_DIR\" || cd ~
+            COMPOSE_DIR=$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1 | xargs dirname)
+            [ -n "$COMPOSE_DIR" ] && cd "$COMPOSE_DIR" || cd ~
         fi &&
-        sudo docker-compose ps" || true
+        sudo docker-compose ps' || true
     exit 1
 }
 
