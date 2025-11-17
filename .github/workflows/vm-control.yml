@@ -1,5 +1,21 @@
 name: SyncScribe VM Control
 
+# SETUP INSTRUCTIONS:
+# 1. Add GitHub Repository Variables (Settings > Secrets and variables > Actions > Variables):
+#    - VM_NAME: syncscribe-vm (optional, has default)
+#    - VM_ZONE: us-central1-a (optional, has default)
+#
+# 2. Grant service account permissions (GCP_WIF_SERVICE_ACCOUNT secret):
+#    gcloud projects add-iam-policy-binding meeting-trans-443019 \
+#      --member="serviceAccount:SERVICE_ACCOUNT_EMAIL" \
+#      --role="roles/compute.instanceAdmin.v1"
+#
+# 3. Required permissions:
+#    - compute.instances.get
+#    - compute.instances.start
+#    - compute.instances.stop
+#    - compute.instances.use (for SSH)
+
 on:
   workflow_dispatch:
     inputs:
@@ -44,15 +60,32 @@ jobs:
       - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
 
-      - name: Verify VM access
+      - name: Verify VM access and permissions
         run: |
-          echo "Verifying VM access..."
-          gcloud compute instances describe "$VM_NAME" \
+          echo "Verifying VM access and permissions..."
+          if gcloud compute instances describe "$VM_NAME" \
             --zone="$VM_ZONE" \
             --project="$GCP_PROJECT_ID" \
-            --format="get(status,networkInterfaces[0].accessConfigs[0].natIP)" || {
-            echo "Warning: Could not access VM. It may be stopped."
-          }
+            --format="get(status,networkInterfaces[0].accessConfigs[0].natIP)" 2>&1; then
+            echo "✓ VM access verified"
+          else
+            echo "❌ Error: Service account lacks required permissions"
+            echo ""
+            echo "Required permissions:"
+            echo "  - compute.instances.get"
+            echo "  - compute.instances.start"
+            echo "  - compute.instances.stop"
+            echo "  - compute.instances.use (for SSH)"
+            echo ""
+            echo "Grant these permissions to the service account:"
+            echo "  ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}"
+            echo ""
+            echo "Or assign the 'Compute Instance Admin' role:"
+            echo "  gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \\"
+            echo "    --member='serviceAccount:${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}' \\"
+            echo "    --role='roles/compute.instanceAdmin.v1'"
+            exit 1
+          fi
 
       - name: Make scripts executable
         run: |
@@ -101,11 +134,18 @@ jobs:
         if: always() && inputs.action == 'deploy-online'
         run: |
           echo "=== Container Status ==="
-          gcloud compute ssh "$VM_NAME" \
+          if gcloud compute ssh "$VM_NAME" \
             --zone="$VM_ZONE" \
             --project="$GCP_PROJECT_ID" \
-            --command="cd ~/meeting-transcriber && sudo docker-compose ps 2>&1 || echo 'Containers not running'" || \
-          echo "Could not check container status (VM may be stopped)"
+            --command="cd ~/meeting-transcriber && sudo docker-compose ps 2>&1" 2>&1; then
+            echo "✓ Container status retrieved"
+          else
+            echo "⚠ Could not check container status"
+            echo "  This may be due to:"
+            echo "  - VM is still starting up"
+            echo "  - SSH connection issues"
+            echo "  - Missing compute.instances.use permission"
+          fi
 
       - name: Show DNS status
         if: always() && inputs.action == 'deploy-online'
