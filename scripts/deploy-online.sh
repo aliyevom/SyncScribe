@@ -62,7 +62,7 @@ gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command "
 
 # Start containers
 echo -e "${YELLOW}Step 4: Starting containers...${NC}"
-gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command "
+gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
     cd ~/meeting-transcriber &&
     
     # Check if docker-compose.yml exists
@@ -122,7 +122,7 @@ gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command "
     echo '=== External connectivity test ===' &&
     echo 'Testing if application is accessible externally...' &&
     curl -s -I http://localhost:80 2>&1 | head -3 || echo '⚠ External test failed (this is normal if testing from VM)'
-" || {
+" $SSH_OPTS || {
     echo -e "${RED}Error: Failed to start services${NC}"
     echo -e "${YELLOW}Checking container status...${NC}"
     gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command "cd ~/meeting-transcriber && sudo docker-compose ps" || true

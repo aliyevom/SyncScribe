@@ -21,7 +21,12 @@ echo ""
 
 # Stop containers
 echo -e "${YELLOW}Step 1: Stopping containers...${NC}"
-gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command "
+# Use --quiet to avoid SSH key prompts, and --impersonate-service-account if set
+SSH_OPTS="--zone=$ZONE --quiet"
+if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
+    SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
+fi
+gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
     cd ~/meeting-transcriber &&
     sudo docker-compose down &&
     echo '✓ Containers stopped'

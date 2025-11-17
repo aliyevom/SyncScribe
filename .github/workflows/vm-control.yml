@@ -103,6 +103,8 @@ jobs:
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
           export STOP_VM="$STOP_VM"
+          # Use --impersonate-service-account to avoid SSH key issues
+          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}"
           ./scripts/deploy-offline.sh
 
       - name: Run deploy-online
@@ -114,6 +116,8 @@ jobs:
           echo "Running deploy-online.sh..."
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
+          # Use --impersonate-service-account to avoid SSH key issues
+          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}"
           ./scripts/deploy-online.sh
 
       - name: Show VM status
@@ -132,10 +136,15 @@ jobs:
 
       - name: Show container status
         if: always() && inputs.action == 'deploy-online'
+        env:
+          CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
         run: |
           echo "=== Container Status ==="
-          if gcloud compute ssh "$VM_NAME" \
-            --zone="$VM_ZONE" \
+          SSH_OPTS="--zone=$VM_ZONE --quiet"
+          if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
+            SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
+          fi
+          if gcloud compute ssh "$VM_NAME" $SSH_OPTS \
             --project="$GCP_PROJECT_ID" \
             --command="cd ~/meeting-transcriber && sudo docker-compose ps 2>&1" 2>&1; then
             echo "✓ Container status retrieved"
@@ -144,7 +153,7 @@ jobs:
             echo "  This may be due to:"
             echo "  - VM is still starting up"
             echo "  - SSH connection issues"
-            echo "  - Missing compute.instances.use permission"
+            echo "  - Missing iam.serviceAccountUser permission"
           fi
 
       - name: Show DNS status
