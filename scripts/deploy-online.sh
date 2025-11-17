@@ -13,6 +13,13 @@ NC='\033[0m'
 VM_NAME="${VM_NAME:-syncscribe-vm}"
 ZONE="${ZONE:-us-central1-a}"
 
+# Environment variables for API keys (can be set from GitHub Actions secrets)
+# These will be used to create/update .env file on the VM
+export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
+export DEEPGRAM_API_KEY="${DEEPGRAM_API_KEY:-}"
+export ASSEMBLYAI_API_KEY="${ASSEMBLYAI_API_KEY:-}"
+export REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL:-https://syncscribe.app}"
+
 # Setup SSH options for service account impersonation
 SSH_OPTS="--zone=$ZONE --quiet"
 if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
@@ -91,7 +98,14 @@ if [ "$DEPLOY_CODE" = "true" ]; then
     echo "Branch: $BRANCH"
     
     # Deploy code via git clone
+    # Pass environment variables to the remote command so they're available for .env creation
     gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
+        # Import environment variables from parent shell
+        export OPENAI_API_KEY='${OPENAI_API_KEY}'
+        export DEEPGRAM_API_KEY='${DEEPGRAM_API_KEY}'
+        export ASSEMBLYAI_API_KEY='${ASSEMBLYAI_API_KEY}'
+        export REACT_APP_SERVER_URL='${REACT_APP_SERVER_URL}'
+        
         # Ensure git is installed
         if ! command -v git >/dev/null 2>&1; then
             echo 'Installing git...' &&
@@ -154,11 +168,13 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             echo '✓ Repository updated'
         fi &&
         
-        # Restore .env file if it was backed up
+        # Restore or create .env file
+        ENV_CREATED=false
         if [ -n \"\$ENV_BACKUP_PATH\" ] && [ -f \"\$ENV_BACKUP_PATH\" ]; then
             echo 'Restoring .env file from backup...' &&
             cp \"\$ENV_BACKUP_PATH\" ~/meeting-transcriber/.env &&
-            echo '✓ .env file restored'
+            echo '✓ .env file restored from backup'
+            ENV_CREATED=true
         else
             # Try to find the latest backup file
             LATEST_BACKUP=\$(ls -t ~/.env.backup.* 2>/dev/null | head -1) &&
@@ -166,9 +182,22 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 echo 'Restoring .env file from latest backup...' &&
                 cp \"\$LATEST_BACKUP\" ~/meeting-transcriber/.env &&
                 echo '✓ .env file restored from backup'
-            else
-                echo '⚠ Could not restore .env file - API keys may be missing'
+                ENV_CREATED=true
             fi
+        fi &&
+        
+        # Create/update .env file from environment variables (from GitHub Actions secrets)
+        # This allows GitHub Actions to inject API keys without committing them
+        if [ -n \"\$OPENAI_API_KEY\" ] || [ -n \"\$DEEPGRAM_API_KEY\" ] || [ -n \"\$ASSEMBLYAI_API_KEY\" ]; then
+            echo 'Creating/updating .env file from environment variables...' &&
+            {
+                [ -n \"\$OPENAI_API_KEY\" ] && echo \"OPENAI_API_KEY=\$OPENAI_API_KEY\" || true
+                [ -n \"\$DEEPGRAM_API_KEY\" ] && echo \"DEEPGRAM_API_KEY=\$DEEPGRAM_API_KEY\" || true
+                [ -n \"\$ASSEMBLYAI_API_KEY\" ] && echo \"ASSEMBLYAI_API_KEY=\$ASSEMBLYAI_API_KEY\" || true
+                [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
+            } > ~/meeting-transcriber/.env &&
+            echo '✓ .env file created from environment variables'
+            ENV_CREATED=true
         fi &&
         
         # Verify docker-compose.yml exists
@@ -184,17 +213,28 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             ENV_SIZE=\$(wc -c < ~/meeting-transcriber/.env) &&
             if [ \"\$ENV_SIZE\" -gt 10 ]; then
                 echo '✓ .env file exists and has content'
+                # Show which keys are set (without revealing values)
+                echo 'Environment variables in .env:'
+                grep -E '^(OPENAI_API_KEY|DEEPGRAM_API_KEY|ASSEMBLYAI_API_KEY|REACT_APP_SERVER_URL)=' ~/meeting-transcriber/.env | sed 's/=.*/=***/' || true
             else
                 echo '⚠ .env file exists but appears empty or incomplete'
             fi
         else
             echo '⚠ WARNING: .env file not found - API keys are missing!'
             echo '   The application will not work without API keys.'
-            echo '   Please create ~/meeting-transcriber/.env with required variables:'
-            echo '   - OPENAI_API_KEY'
-            echo '   - DEEPGRAM_API_KEY'
-            echo '   - ASSEMBLYAI_API_KEY'
-            echo '   - REACT_APP_SERVER_URL'
+            echo ''
+            if [ -n \"\$OPENAI_API_KEY\" ] || [ -n \"\$DEEPGRAM_API_KEY\" ] || [ -n \"\$ASSEMBLYAI_API_KEY\" ]; then
+                echo '   Environment variables were provided but .env file creation failed.'
+                echo '   This may be a permissions issue.'
+            else
+                echo '   No API keys provided via environment variables.'
+                echo '   Please either:'
+                echo '   1. Add secrets to GitHub Actions (recommended):'
+                echo '      - OPENAI_API_KEY'
+                echo '      - DEEPGRAM_API_KEY'
+                echo '      - ASSEMBLYAI_API_KEY'
+                echo '   2. Or manually create ~/meeting-transcriber/.env with required variables'
+            fi
         fi
     " || {
         echo -e "${RED}❌ Failed to deploy code${NC}"

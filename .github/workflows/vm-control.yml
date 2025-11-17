@@ -4,13 +4,21 @@ name: SyncScribe VM Control
 # 1. Add GitHub Repository Variables (Settings > Secrets and variables > Actions > Variables):
 #    - VM_NAME: syncscribe-vm (optional, has default)
 #    - VM_ZONE: us-central1-a (optional, has default)
+#    - REACT_APP_SERVER_URL: https://syncscribe.app (optional, has default)
 #
-# 2. Grant service account permissions (GCP_WIF_SERVICE_ACCOUNT secret):
+# 2. Add GitHub Repository Secrets (Settings > Secrets and variables > Actions > Secrets):
+#    - OPENAI_API_KEY: Your OpenAI API key
+#    - DEEPGRAM_API_KEY: Your Deepgram API key
+#    - ASSEMBLYAI_API_KEY: Your AssemblyAI API key
+#    - GCP_WIF_PROVIDER: Workload Identity Federation provider
+#    - GCP_WIF_SERVICE_ACCOUNT: Service account email for WIF
+#
+# 3. Grant service account permissions (GCP_WIF_SERVICE_ACCOUNT secret):
 #    gcloud projects add-iam-policy-binding meeting-trans-443019 \
 #      --member="serviceAccount:SERVICE_ACCOUNT_EMAIL" \
 #      --role="roles/compute.instanceAdmin.v1"
 #
-# 3. Required permissions:
+# 4. Required permissions:
 #    - compute.instances.get
 #    - compute.instances.start
 #    - compute.instances.stop
@@ -118,6 +126,11 @@ jobs:
           GITHUB_WORKSPACE: ${{ github.workspace }}
           GITHUB_REF: ${{ github.ref }}
           DEPLOY_CODE: "true"
+          # API Keys from GitHub Secrets (will be injected into .env file on VM)
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
+          ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
+          REACT_APP_SERVER_URL: ${{ vars.REACT_APP_SERVER_URL || 'https://syncscribe.app' }}
         run: |
           echo "Running deploy-online.sh..."
           export VM_NAME="$VM_NAME"
@@ -126,6 +139,11 @@ jobs:
           export GITHUB_WORKSPACE="$GITHUB_WORKSPACE"
           export GITHUB_REF="$GITHUB_REF"
           export DEPLOY_CODE="$DEPLOY_CODE"
+          # Export API keys for .env file creation
+          export OPENAI_API_KEY="$OPENAI_API_KEY"
+          export DEEPGRAM_API_KEY="$DEEPGRAM_API_KEY"
+          export ASSEMBLYAI_API_KEY="$ASSEMBLYAI_API_KEY"
+          export REACT_APP_SERVER_URL="$REACT_APP_SERVER_URL"
           # Impersonate VM's service account for SSH access
           export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
           ./scripts/deploy-online.sh
