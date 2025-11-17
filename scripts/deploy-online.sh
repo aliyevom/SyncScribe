@@ -66,8 +66,67 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     sudo docker ps > /dev/null 2>&1 && echo "✓ Docker daemon ready" || echo "⚠ Docker may not be fully ready"
 ' || echo -e "${YELLOW}Warning: Could not verify Docker status${NC}"
 
+# Deploy code if not present
+echo -e "${YELLOW}Step 4: Ensuring code is deployed...${NC}"
+DEPLOY_CODE="${DEPLOY_CODE:-true}"
+if [ "$DEPLOY_CODE" = "true" ]; then
+    # Check if we're running from GitHub Actions (has GITHUB_REPOSITORY env var)
+    if [ -n "$GITHUB_REPOSITORY" ] && [ -n "$GITHUB_WORKSPACE" ]; then
+        echo -e "${YELLOW}Detected GitHub Actions environment - deploying code from repository...${NC}"
+        # Use gcloud compute scp to copy essential files
+        gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
+            if [ ! -d ~/meeting-transcriber ]; then
+                mkdir -p ~/meeting-transcriber
+            fi
+        ' || true
+        
+        # Copy essential files
+        echo "Copying docker-compose.yml..."
+        gcloud compute scp --zone="$ZONE" "$GITHUB_WORKSPACE/docker-compose.yml" "$VM_NAME":~/meeting-transcriber/docker-compose.yml 2>/dev/null || {
+            echo -e "${YELLOW}⚠ Could not copy docker-compose.yml via scp, trying git clone...${NC}"
+            # Fallback: clone repository
+            GITHUB_REPO_URL="https://github.com/$GITHUB_REPOSITORY.git"
+            gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
+                if [ ! -d ~/meeting-transcriber/.git ]; then
+                    echo 'Cloning repository...' &&
+                    rm -rf ~/meeting-transcriber &&
+                    git clone --depth 1 --branch ${GITHUB_REF#refs/heads/} '$GITHUB_REPO_URL' ~/meeting-transcriber 2>/dev/null || 
+                    git clone --depth 1 '$GITHUB_REPO_URL' ~/meeting-transcriber
+                else
+                    echo 'Repository exists, pulling latest changes...' &&
+                    cd ~/meeting-transcriber &&
+                    git pull || echo '⚠ Git pull failed, continuing with existing code'
+                fi
+            " || echo -e "${YELLOW}⚠ Could not deploy code via git clone${NC}"
+        }
+    else
+        # Not in GitHub Actions - check if code exists, if not, try to clone
+        gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
+            if [ ! -f ~/meeting-transcriber/docker-compose.yml ] && [ ! -f ~/docker-compose.yml ]; then
+                echo "⚠ No docker-compose.yml found on VM"
+                echo "   Code needs to be deployed manually or via deploy-dev.sh"
+                echo "   Attempting to clone from GitHub..."
+                GITHUB_REPO="${GITHUB_REPO:-aliyevom/SyncScribe}"
+                BRANCH="${GITHUB_BRANCH:-main}"
+                if command -v git >/dev/null 2>&1; then
+                    rm -rf ~/meeting-transcriber
+                    git clone --depth 1 --branch "$BRANCH" "https://github.com/$GITHUB_REPO.git" ~/meeting-transcriber 2>/dev/null || {
+                        echo "⚠ Git clone failed. Please deploy code manually using:"
+                        echo "   ./scripts/deploy-dev.sh"
+                    }
+                else
+                    echo "⚠ Git not installed. Please deploy code manually using:"
+                    echo "   ./scripts/deploy-dev.sh"
+                fi
+            fi
+        ' || echo -e "${YELLOW}Warning: Could not check/deploy code${NC}"
+    fi
+else
+    echo -e "${YELLOW}Skipping code deployment (DEPLOY_CODE=false)${NC}"
+fi
+
 # Start containers
-echo -e "${YELLOW}Step 4: Starting containers...${NC}"
+echo -e "${YELLOW}Step 5: Starting containers...${NC}"
 gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     # Find docker-compose.yml location
     COMPOSE_DIR=""
@@ -183,7 +242,7 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
 
 # Check DNS configuration
 echo ""
-echo -e "${YELLOW}Step 5: Checking DNS configuration...${NC}"
+echo -e "${YELLOW}Step 6: Checking DNS configuration...${NC}"
 VM_IP=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
 DNS_IP=$(dig +short syncscribe.app 2>/dev/null | head -1 || echo "")
 
