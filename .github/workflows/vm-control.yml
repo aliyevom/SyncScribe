@@ -1,0 +1,134 @@
+name: SyncScribe VM Control
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "VM deployment action"
+        required: true
+        type: choice
+        options:
+          - deploy-offline
+          - deploy-online
+        default: deploy-online
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  # Set via GitHub Repository Variables
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  VM_NAME: ${{ vars.VM_NAME || 'syncscribe-vm' }}
+  VM_ZONE: ${{ vars.VM_ZONE || 'us-central1-a' }}
+  USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
+
+jobs:
+  vm-control:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      # Authenticate to Google Cloud via Workload Identity Federation
+      - name: Authenticate to Google Cloud (WIF)
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+          access_token_lifetime: 3600s
+          access_token_scopes: https://www.googleapis.com/auth/cloud-platform
+
+      - name: Setup gcloud CLI
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify VM access
+        run: |
+          echo "Verifying VM access..."
+          gcloud compute instances describe "$VM_NAME" \
+            --zone="$VM_ZONE" \
+            --project="$GCP_PROJECT_ID" \
+            --format="get(status,networkInterfaces[0].accessConfigs[0].natIP)" || {
+            echo "Warning: Could not access VM. It may be stopped."
+          }
+
+      - name: Make scripts executable
+        run: |
+          chmod +x scripts/deploy-offline.sh
+          chmod +x scripts/deploy-online.sh
+
+      - name: Run deploy-offline
+        if: inputs.action == 'deploy-offline'
+        env:
+          VM_NAME: ${{ env.VM_NAME }}
+          ZONE: ${{ env.VM_ZONE }}
+          STOP_VM: "true"
+        run: |
+          echo "Running deploy-offline.sh..."
+          export VM_NAME="$VM_NAME"
+          export ZONE="$ZONE"
+          export STOP_VM="$STOP_VM"
+          ./scripts/deploy-offline.sh
+
+      - name: Run deploy-online
+        if: inputs.action == 'deploy-online'
+        env:
+          VM_NAME: ${{ env.VM_NAME }}
+          ZONE: ${{ env.VM_ZONE }}
+        run: |
+          echo "Running deploy-online.sh..."
+          export VM_NAME="$VM_NAME"
+          export ZONE="$ZONE"
+          ./scripts/deploy-online.sh
+
+      - name: Show VM status
+        if: always()
+        run: |
+          echo "=== VM Status ==="
+          gcloud compute instances describe "$VM_NAME" \
+            --zone="$VM_ZONE" \
+            --project="$GCP_PROJECT_ID" \
+            --format="table(
+              name,
+              status,
+              networkInterfaces[0].accessConfigs[0].natIP:label=EXTERNAL_IP,
+              machineType.scope(machineTypes):label=MACHINE_TYPE
+            )" || echo "VM not accessible"
+
+      - name: Show container status
+        if: always() && inputs.action == 'deploy-online'
+        run: |
+          echo "=== Container Status ==="
+          gcloud compute ssh "$VM_NAME" \
+            --zone="$VM_ZONE" \
+            --project="$GCP_PROJECT_ID" \
+            --command="cd ~/meeting-transcriber && sudo docker-compose ps 2>&1 || echo 'Containers not running'" || \
+          echo "Could not check container status (VM may be stopped)"
+
+      - name: Show DNS status
+        if: always() && inputs.action == 'deploy-online'
+        run: |
+          echo "=== DNS Status ==="
+          VM_IP=$(gcloud compute instances describe "$VM_NAME" \
+            --zone="$VM_ZONE" \
+            --project="$GCP_PROJECT_ID" \
+            --format='get(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null || echo "")
+          
+          if [ -n "$VM_IP" ]; then
+            echo "VM IP: $VM_IP"
+            DNS_IP=$(dig +short syncscribe.app 2>/dev/null | head -1 || echo "")
+            if [ -n "$DNS_IP" ]; then
+              if [ "$VM_IP" = "$DNS_IP" ]; then
+                echo "DNS: $DNS_IP (matches VM IP)"
+              else
+                echo "DNS: $DNS_IP (mismatch - update DNS to $VM_IP)"
+              fi
+            else
+              echo "DNS: Could not resolve syncscribe.app"
+            fi
+          else
+            echo "Could not determine VM IP"
+          fi
+

@@ -10,8 +10,8 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-VM_NAME="syncscribe-vm"
-ZONE="us-central1-a"
+VM_NAME="${VM_NAME:-syncscribe-vm}"
+ZONE="${ZONE:-us-central1-a}"
 
 echo -e "${BLUE}======================================${NC}"
 echo -e "${BLUE}  SyncScribe Online Mode${NC}"
