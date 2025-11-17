@@ -38,6 +38,8 @@ env:
   VM_NAME: ${{ vars.VM_NAME || 'syncscribe-vm' }}
   VM_ZONE: ${{ vars.VM_ZONE || 'us-central1-a' }}
   USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
+  # VM's service account (default compute service account)
+  VM_SERVICE_ACCOUNT: "840029787447-compute@developer.gserviceaccount.com"
 
 jobs:
   vm-control:
@@ -103,8 +105,8 @@ jobs:
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
           export STOP_VM="$STOP_VM"
-          # Use --impersonate-service-account to avoid SSH key issues
-          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}"
+          # Impersonate VM's service account for SSH access
+          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
           ./scripts/deploy-offline.sh
 
       - name: Run deploy-online
@@ -116,8 +118,8 @@ jobs:
           echo "Running deploy-online.sh..."
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
-          # Use --impersonate-service-account to avoid SSH key issues
-          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}"
+          # Impersonate VM's service account for SSH access
+          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
           ./scripts/deploy-online.sh
 
       - name: Show VM status
@@ -137,7 +139,7 @@ jobs:
       - name: Show container status
         if: always() && inputs.action == 'deploy-online'
         env:
-          CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+          CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ env.VM_SERVICE_ACCOUNT }}
         run: |
           echo "=== Container Status ==="
           SSH_OPTS="--zone=$VM_ZONE --quiet"
