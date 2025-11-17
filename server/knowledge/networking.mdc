@@ -1,0 +1,28 @@
+---
+globs: */networking/**/*.tf,*/AKS/**/*.tf,*/private-endpoint/**/*.tf
+---
+# Networking Standards
+
+## Hub and Spoke Architecture
+- Regional hub networks in dedicated connectivity subscription
+- Automated peering setup for new spokes
+- Centralized Private DNS zones in connectivity layer
+- Standard UDR and NSG configurations
+
+## Private Endpoints
+- Use Private Endpoints for all PaaS services
+- Automated DNS zone integration
+- Consistent subnet allocation
+- Network security group rules standardization
+
+## Connectivity
+- ExpressRoute/VPN in hub networks
+- Azure Firewall for centralized egress
+- DDoS protection enabled
+- Network Watcher enabled per region
+
+## Security
+- No public endpoints for data services
+- Implement network isolation
+- Use service endpoints where appropriate
+- Enable flow logs for NSGs

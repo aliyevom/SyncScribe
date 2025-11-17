@@ -1,0 +1,54 @@
+version: '3.8'
+
+services:
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile.server
+    container_name: syncscribe-server
+    ports:
+      - "5002:5002"
+    environment:
+      - NODE_ENV=production
+      - PORT=5002
+      # Add your API keys here or use .env file
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
+      - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+    volumes:
+      - ./server/team-data.json:/app/server/team-data.json:ro
+      - ./server/meeting-tags.json:/app/server/meeting-tags.json:ro
+      - ./server/knowledge:/app/server/knowledge:ro
+    restart: unless-stopped
+    networks:
+      - syncscribe-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:5002/healthz', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile.client.docker
+      args:
+        - REACT_APP_SERVER_URL=${REACT_APP_SERVER_URL:-http://localhost:5002}
+    container_name: syncscribe-client
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - ./client/nginx-docker.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - server
+    restart: unless-stopped
+    networks:
+      - syncscribe-network
+
+networks:
+  syncscribe-network:
+    driver: bridge
+

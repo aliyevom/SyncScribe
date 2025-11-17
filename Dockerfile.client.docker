@@ -1,0 +1,52 @@
+# Client container (React) - Docker Compose Version
+FROM node:18-alpine AS build
+WORKDIR /app/client
+
+# Accept build argument for server URL
+ARG REACT_APP_SERVER_URL=http://localhost:5002
+ENV REACT_APP_SERVER_URL=$REACT_APP_SERVER_URL
+
+COPY client/package*.json ./
+# Use npm install instead of npm ci to handle lock file mismatches
+RUN npm install --legacy-peer-deps
+
+COPY client/ ./
+
+# Generate build version and timestamp
+ARG BUILD_VERSION=dev-$(date +%Y%m%d-%H%M%S)
+ARG BUILD_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+ENV BUILD_VERSION=$BUILD_VERSION
+ENV BUILD_TIMESTAMP=$BUILD_TIMESTAMP
+
+# Build the React app
+RUN npm run build
+
+# Inject build version into index.html
+RUN sed -i "s|%BUILD_VERSION%|${BUILD_VERSION}|g" build/index.html && \
+    sed -i "s|%BUILD_TIMESTAMP%|${BUILD_TIMESTAMP}|g" build/index.html
+
+FROM nginx:1.25-alpine
+
+# Copy build
+COPY --from=build /app/client/build /usr/share/nginx/html
+
+# Fix permissions for ALL files and directories (fixes macOS permission issues)
+RUN find /usr/share/nginx/html -type f -exec chmod 644 {} \; && \
+    find /usr/share/nginx/html -type d -exec chmod 755 {} \; && \
+    find /usr/share/nginx/html -name "._*" -delete && \
+    chmod 644 /usr/share/nginx/html/*.* 2>/dev/null || true && \
+    chmod 644 /usr/share/nginx/html/*.worklet.js 2>/dev/null || true && \
+    chmod 755 /usr/share/nginx/html/images 2>/dev/null || true && \
+    chmod -R 644 /usr/share/nginx/html/images/* 2>/dev/null || true
+
+# Copy Docker-specific nginx configuration
+COPY client/nginx-docker.conf /etc/nginx/conf.d/default.conf
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+  CMD wget --quiet --tries=1 --spider http://localhost:80 || exit 1
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]
+

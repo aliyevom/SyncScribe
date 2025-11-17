@@ -3,21 +3,64 @@
 
 class TeamKnowledgeBase {
   constructor() {
-    // Initialize with default team structure
+    // Hardcoded Engineering Chapters structure
     this.teamData = {
       organization: {
-        name: "Your Organization",
-        mission: "Organization mission statement",
-        values: ["Innovation", "Collaboration", "Excellence"],
+        name: "National Grid Engineering Chapters",
+        mission: "Enabling collaboration and innovation across DPIT platforms",
+        values: ["People First", "Collaboration", "Innovation", "Consistency"],
         structure: {
           engineering: {
-            teams: ["Frontend", "Backend", "DevOps", "QA"],
-            techStack: ["React", "Node.js", "AWS", "Docker", "Kubernetes"],
-            processes: ["Agile", "CI/CD", "Code Reviews", "Sprint Planning"]
+            teams: ["Infrastructure", "Software", "Network"],
+            techStack: {
+              platforms: {
+                "ServiceNow Greenfield": {
+                  metrics: "99.9% uptime, 45% faster ticket resolution",
+                  deployment: "Rolling updates every 2 weeks"
+                },
+                "Teams Voice/Rooms": {
+                  adoption: "85% employee usage, 12,000 daily calls",
+                  coverage: "250 meeting rooms equipped"
+                },
+                "DDI/Infoblox": {
+                  performance: "3ms average DNS response time",
+                  scale: "Managing 50,000+ IP addresses"
+                },
+                "GridGPT/Connect AI": {
+                  accuracy: "95% correct responses",
+                  usage: "2,000+ daily interactions"
+                }
+              },
+              infrastructure: [
+                "Windows 11/Intune/Jamf/AVD",
+                "Entra/AD",
+                "M365",
+                "Public/Private Cloud",
+                "Utah/Tier 1-3"
+              ]
+            },
+            metrics: {
+              "DORA": {
+                "Deployment Frequency": "10 times per day",
+                "Lead Time": "< 1 day",
+                "MTTR": "< 30 minutes",
+                "Change Failure Rate": "< 5%"
+              },
+              "Platform": {
+                "Availability": "99.99%",
+                "Response Time": "< 200ms",
+                "Error Rate": "< 0.1%"
+              }
+            }
           },
-          product: {
-            teams: ["Product Management", "UX/UI", "Data Analytics"],
-            tools: ["Jira", "Figma", "Amplitude", "Notion"]
+          chapters: {
+            teams: ["Chapter Leaders", "Platform Partners", "Skills Development"],
+            tools: ["Skills Matrix", "Demand Intake", "Technical Debt Tracker"],
+            metrics: {
+              "Skills Coverage": "92%",
+              "Platform Adoption": "88%",
+              "Technical Debt Reduction": "35% YoY"
+            }
           }
         }
       },
@@ -222,13 +265,32 @@ class TeamKnowledgeBase {
     });
     
     // Extract technologies
-    const techKeywords = [
-      ...this.teamData.organization.structure.engineering.techStack,
-      'API', 'database', 'frontend', 'backend', 'deployment', 'testing'
-    ];
+    const techKeywords = [];
+    
+    // Safely extract platform keywords
+    try {
+      if (this.teamData?.organization?.structure?.engineering?.techStack?.platforms) {
+        techKeywords.push(...Object.keys(this.teamData.organization.structure.engineering.techStack.platforms));
+      }
+      if (this.teamData?.organization?.structure?.engineering?.techStack?.infrastructure) {
+        techKeywords.push(...this.teamData.organization.structure.engineering.techStack.infrastructure);
+      }
+    } catch (error) {
+      console.warn('Error extracting tech keywords:', error);
+    }
+    
+    // Add default technical terms
+    techKeywords.push(
+      'API', 'database', 'frontend', 'backend', 'deployment', 'testing',
+      'ServiceNow', 'Teams Voice', 'GridGPT', 'Infoblox'
+    );
     
     techKeywords.forEach(tech => {
-      if (transcript.toLowerCase().includes(tech.toLowerCase())) {
+      // Handle compound terms (e.g., "Teams Voice")
+      const techParts = tech.toLowerCase().split(/[\/\s]+/);
+      const transcriptLower = transcript.toLowerCase();
+      
+      if (techParts.every(part => transcriptLower.includes(part))) {
         entities.technologies.add(tech);
       }
     });

@@ -29,7 +29,7 @@ const googleSpeechConfig = {
     enableAutomaticPunctuation: true,
     enableSpeakerDiarization: true,
     diarizationSpeakerCount: 10, // Support up to 10 speakers
-    model: 'latest_long', // Best model for long conversations
+    model: 'video', // Better for technical meetings
     useEnhanced: true,
     metadata: {
       interactionType: 'DISCUSSION',
@@ -41,12 +41,12 @@ const googleSpeechConfig = {
     // Context-aware speech recognition
     speechContexts: [{
       phrases: [
-        // Technical terms
-        'API', 'REST', 'GraphQL', 'microservices', 'kubernetes', 'docker',
-        'CI/CD', 'deployment', 'infrastructure', 'architecture', 'frontend', 'backend',
-        'database', 'SQL', 'NoSQL', 'cache', 'Redis', 'PostgreSQL', 'MongoDB',
-        'React', 'Node.js', 'TypeScript', 'JavaScript', 'Python', 'Java',
-        'AWS', 'Azure', 'GCP', 'cloud', 'serverless', 'lambda',
+        // Engineering Chapters terms
+        'DORA metrics', 'design-to-operate', 'secure-by-design', 'ServiceNow',
+        'Windows 11', 'Intune', 'Jamf', 'AVD', 'Entra', 'AD', 'M365',
+        'Teams Voice', 'Teams Rooms', 'public cloud', 'private cloud',
+        'Utah', 'Tier 1', 'Tier 2', 'Tier 3', 'DDI', 'Infoblox',
+        'PBX', 'AMI', 'ADMS', 'GridGPT', 'Connect AI', 'TDEM',
         // Meeting terms
         'sprint', 'backlog', 'user story', 'epic', 'retrospective', 'standup',
         'planning', 'grooming', 'velocity', 'burndown', 'agile', 'scrum',
@@ -76,9 +76,11 @@ const openAISpeechConfig = {
   response_format: "verbose_json", // Get more detailed output
   temperature: 0.0, // Lower temperature for more accurate transcription
   // Provide context prompt for better accuracy
-  prompt: `This is a technical team meeting. Common terms include: API, microservices, 
-    deployment, sprint, backlog, React, Node.js, AWS, Docker, Kubernetes, CI/CD. 
-    Speaker names may include team members. Please transcribe accurately with proper punctuation.`
+  prompt: `This is a National Grid Engineering Chapters meeting. Common terms include:
+    DORA metrics, design-to-operate, secure-by-design, ServiceNow Greenfield,
+    Windows 11, Intune, Jamf, AVD, Entra/AD, M365, Teams Voice, Teams Rooms,
+    public/private cloud, Utah/Tier 1-3, DDI/Infoblox, PBX, AMI/ADMS, GridGPT.
+    Use clear, people-first language. Transcribe accurately with proper punctuation.`
 };
 
 // Audio preprocessing for better quality

@@ -1,7 +1,7 @@
 # SyncScribe Makefile
 # Comprehensive project management commands
 
-.PHONY: help install start start-server start-client stop clean setup dev build test lint format update-team tag-meeting analyze-tags monitor-server monitor-client list-server list-client online-server online-client offline-server offline-client online-all offline-all
+.PHONY: help install start start-server start-client stop clean setup dev build test lint format update-team tag-meeting analyze-tags monitor-server monitor-client list-server list-client online-server online-client offline-server offline-client online-all offline-all image render-latest purge-all purge-workloads purge-gclb purge-cluster purge-everything reset-online-all
 
 # Default target - show help
 help:
@@ -28,6 +28,14 @@ help:
 	@echo "  make offline-client - Scale client to 0 replicas"
 	@echo "  make online-all     - Scale both to 1 replica"
 	@echo "  make offline-all    - Scale both to 0 replicas and remove LB/Ingress"
+	@echo "  make image          - Build and push :latest images via Cloud Build"
+	@echo "  make render-latest  - Regenerate .k8s-tmp manifests to use :latest"
+	@echo "  make purge-all      - Delete deployments (fully remove workloads)"
+	@echo "  make purge-workloads- Delete all namespace resources and the namespace"
+	@echo "  make purge-gclb     - Clean GCLB leftovers (NEG, backend, rules)"
+	@echo "  make purge-cluster  - Delete the GKE cluster (destructive)"
+	@echo "  make purge-everything - Purge workloads, GCLB and cluster*****""
+	@echo "  make reset-online-all- Recreate cluster, build+push, deploy, expose*****"
 	@echo ""
 	@echo "Team & Tag Management:"
 	@echo "  make update-team   - Update team data from example"
@@ -272,9 +280,129 @@ online-all: online-server online-client
 	@echo "🔄 Restoring external access (Service/Ingress)..."
 	@if [ -f .k8s-tmp/server.yaml ]; then echo "Applying .k8s-tmp/server.yaml"; kubectl -n syncscribe apply -f .k8s-tmp/server.yaml; else echo "Applying k8s/server.yaml"; kubectl -n syncscribe apply -f k8s/server.yaml; fi
 	@if [ -f .k8s-tmp/client.yaml ]; then echo "Applying .k8s-tmp/client.yaml"; kubectl -n syncscribe apply -f .k8s-tmp/client.yaml; else echo "Applying k8s/client.yaml"; kubectl -n syncscribe apply -f k8s/client.yaml; fi
+	@if [ -f k8s/managed-cert.yaml ]; then kubectl -n syncscribe apply -f k8s/managed-cert.yaml; else echo "Managed cert manifest not found (skipped)"; fi
 	@if [ -f k8s/ingress.yaml ]; then kubectl -n syncscribe apply -f k8s/ingress.yaml; else echo "Ingress manifest not found (skipped)"; fi
 	@echo "✅ Online completed. Current resources:"
 	@kubectl -n syncscribe get deploy,svc,ingress || true
+
+# Delete deployments to fully remove workloads from the cluster
+purge-all:
+	@echo "🗑️  Deleting deployments (syncscribe-client, syncscribe-server)..."
+	@kubectl -n syncscribe delete deploy/syncscribe-client --ignore-not-found
+	@kubectl -n syncscribe delete deploy/syncscribe-server --ignore-not-found
+	@echo "✅ Purge complete. Remaining resources:"
+	@kubectl -n syncscribe get deploy,svc,ingress || true
+
+# Fully purge namespace resources (services, ingresses, HPAs, configmaps, secrets, etc.) and the namespace itself
+purge-workloads:
+	@echo "🧨 Purging all resources in namespace 'syncscribe'..."
+	@kubectl delete ingress --all -n syncscribe --ignore-not-found || true
+	@kubectl delete svc --all -n syncscribe --ignore-not-found || true
+	@kubectl delete deploy --all -n syncscribe --ignore-not-found || true
+	@kubectl delete statefulset --all -n syncscribe --ignore-not-found || true
+	@kubectl delete ds --all -n syncscribe --ignore-not-found || true
+	@kubectl delete hpa --all -n syncscribe --ignore-not-found || true
+	@kubectl delete cm --all -n syncscribe --ignore-not-found || true
+	@kubectl delete secret --all -n syncscribe --ignore-not-found || true
+	@kubectl delete job --all -n syncscribe --ignore-not-found || true
+	@kubectl delete pod --all -n syncscribe --ignore-not-found || true
+	@echo "🗑️  Deleting namespace 'syncscribe'..."
+	@kubectl delete namespace syncscribe --ignore-not-found || true
+	@echo "✅ Namespace purge requested (deletion may take ~1-2 minutes)."
+
+# Best-effort cleanup of GCLB resources left by GCE Ingress (scoped by name containing 'syncscribe')
+purge-gclb:
+	@echo "🧹 Cleaning GCLB artifacts (best-effort)..."
+	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; REGION=$${REGION:-us-central1}; ZONE=$${ZONE:-us-central1-a}; \
+	 echo "Project=$$PROJECT_ID Region=$$REGION Zone=$$ZONE"; \
+	 set -e; \
+	 for bs in $$(gcloud compute backend-services list --project $$PROJECT_ID --format='value(name)' | grep -E 'syncscribe|k8s1-.*syncscribe' || true); do echo "Deleting backend-service $$bs"; gcloud compute backend-services delete $$bs --global --quiet --project $$PROJECT_ID || true; done; \
+	 for fr in $$(gcloud compute forwarding-rules list --project $$PROJECT_ID --format='value(name,region)' | awk '/syncscribe|k8s2-/{print $$1" "$$2}' || true); do set -- $$fr; name=$$1; region=$$2; if [ -n "$$region" ]; then echo "Deleting forwarding-rule $$name in $$region"; gcloud compute forwarding-rules delete $$name --region $$region --quiet --project $$PROJECT_ID || true; else echo "Deleting global forwarding-rule $$name"; gcloud compute forwarding-rules delete $$name --global --quiet --project $$PROJECT_ID || true; fi; done; \
+	 for tp in $$(gcloud compute target-http-proxies list --project $$PROJECT_ID --format='value(name)' | grep -E 'syncscribe|k8s2-' || true); do echo "Deleting target-http-proxy $$tp"; gcloud compute target-http-proxies delete $$tp --quiet --project $$PROJECT_ID || true; done; \
+	 for um in $$(gcloud compute url-maps list --project $$PROJECT_ID --format='value(name)' | grep -E 'syncscribe|k8s2-' || true); do echo "Deleting url-map $$um"; gcloud compute url-maps delete $$um --quiet --project $$PROJECT_ID || true; done; \
+	 for hc in $$(gcloud compute health-checks list --project $$PROJECT_ID --format='value(name)' | grep -E 'syncscribe|k8s' || true); do echo "Deleting health-check $$hc"; gcloud compute health-checks delete $$hc --quiet --project $$PROJECT_ID || true; done; \
+	 for neg in $$(gcloud compute network-endpoint-groups list --zones $$ZONE --project $$PROJECT_ID --format='value(name)' | grep -E 'syncscribe|k8s1-' || true); do echo "Deleting NEG $$neg in $$ZONE"; gcloud compute network-endpoint-groups delete $$neg --zone $$ZONE --quiet --project $$PROJECT_ID || true; done; \
+	 echo "✅ GCLB cleanup attempted."
+
+# Delete the entire GKE cluster (destructive)
+purge-cluster:
+	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; CLUSTER=$${CLUSTER:-gke-syncscribe}; ZONE=$${ZONE:-us-central1-a}; \
+	 echo "🔥 Deleting cluster '$$CLUSTER' in $$ZONE (project $$PROJECT_ID)..."; \
+	 gcloud container clusters delete "$$CLUSTER" --zone "$$ZONE" --project "$$PROJECT_ID" --quiet || true
+	@echo "✅ Cluster delete requested."
+
+# Run full cleanup sequence
+purge-everything: purge-workloads purge-gclb purge-cluster
+	@echo "🧯 Full cleanup sequence executed."
+
+# Recreate cluster if missing, build uniquely tagged images, render manifests and bring online
+reset-online-all:
+	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; CLUSTER=$${CLUSTER:-gke-syncscribe}; ZONE=$${ZONE:-us-central1-a}; REGION=$${REGION:-us}; \
+	 echo "🔁 Resetting environment for $$PROJECT_ID (cluster=$$CLUSTER zone=$$ZONE)"; \
+	 if ! gcloud container clusters describe "$$CLUSTER" --zone "$$ZONE" --project "$$PROJECT_ID" >/dev/null 2>&1; then \
+	   echo "🌱 Creating cluster $$CLUSTER..."; \
+	   gcloud container clusters create "$$CLUSTER" --zone "$$ZONE" --num-nodes=1 --project "$$PROJECT_ID"; \
+	 else \
+	   echo "🔗 Cluster exists."; \
+	 fi; \
+	 gcloud container clusters get-credentials "$$CLUSTER" --zone "$$ZONE" --project "$$PROJECT_ID"; \
+	 kubectl apply -f k8s/namespace.yaml; \
+	 kubectl apply -f k8s/secret.yaml || true; \
+	 # Reserve global static IP (idempotent) and compute nip.io domain \
+	 if ! gcloud compute addresses describe syncscribe-ip --global --project "$$PROJECT_ID" >/dev/null 2>&1; then \
+	   echo "🌐 Reserving global static IP 'syncscribe-ip'..."; \
+	   gcloud compute addresses create syncscribe-ip --global --project "$$PROJECT_ID"; \
+	 fi; \
+	 IP=$$(gcloud compute addresses describe syncscribe-ip --global --project "$$PROJECT_ID" --format='value(address)'); \
+	 DOMAIN=$$(echo $$IP | awk -F. '{printf "%s-%s-%s-%s.nip.io", $$1,$$2,$$3,$$4}'); \
+	 echo "🌍 Using domain $$DOMAIN"; \
+	 TAG=$$(git rev-parse --short HEAD)-$$(date +%s); \
+	 echo "🏷️  Building images with tag $$TAG..."; \
+	 gcloud builds submit --config cloudbuild.yaml \
+	   --substitutions _SERVER_IMAGE=us.gcr.io/$$PROJECT_ID/syncscribe-server:$$TAG,_CLIENT_IMAGE=us.gcr.io/$$PROJECT_ID/syncscribe-client:$$TAG .; \
+	 echo "📝 Rendering manifests to .k8s-tmp for tag $$TAG..."; \
+	 mkdir -p .k8s-tmp; \
+	 sed "s|REPLACE_SERVER_IMAGE|us.gcr.io/$$PROJECT_ID/syncscribe-server:$$TAG|g" k8s/server.yaml > .k8s-tmp/server.yaml; \
+	 sed "s|REPLACE_CLIENT_IMAGE|us.gcr.io/$$PROJECT_ID/syncscribe-client:$$TAG|g" k8s/client.yaml > .k8s-tmp/client.yaml; \
+	 if [ -f k8s/managed-cert.yaml ]; then sed "s|REPLACE_DOMAIN|$$DOMAIN|g" k8s/managed-cert.yaml > .k8s-tmp/managed-cert.yaml; fi; \
+	 if [ -f k8s/ingress.yaml ]; then sed "s|REPLACE_DOMAIN|$$DOMAIN|g" k8s/ingress.yaml > .k8s-tmp/ingress.yaml; fi; \
+	 echo "🚚 Applying manifests..."; \
+	 kubectl -n syncscribe apply -f .k8s-tmp/server.yaml; \
+	 kubectl -n syncscribe apply -f .k8s-tmp/client.yaml; \
+	 if [ -f .k8s-tmp/managed-cert.yaml ]; then kubectl -n syncscribe apply -f .k8s-tmp/managed-cert.yaml; fi; \
+	 if [ -f .k8s-tmp/ingress.yaml ]; then kubectl -n syncscribe apply -f .k8s-tmp/ingress.yaml; fi; \
+	 echo "⏳ Waiting for rollouts..."; \
+	 kubectl -n syncscribe rollout status deploy/syncscribe-server; \
+	 kubectl -n syncscribe rollout status deploy/syncscribe-client; \
+	 echo "--- External Endpoints ---"; \
+	 INGRESS=$$(kubectl -n syncscribe get ingress syncscribe-client -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true); \
+	 [ -z "$$INGRESS" ] && INGRESS=$$(kubectl -n syncscribe get ingress syncscribe-client -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true); \
+	 if [ -n "$$INGRESS" ]; then echo "Ingress: $$INGRESS/*"; else echo "Ingress: (pending)"; fi; \
+	 LB_IP=$$(kubectl -n syncscribe get svc syncscribe-client -o jsonpath='{.status.loadBalancer.ingress[0].ip}' 2>/dev/null || true); \
+	 [ -z "$$LB_IP" ] && LB_IP=$$(kubectl -n syncscribe get svc syncscribe-client -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true); \
+	 LB_PORT=$$(kubectl -n syncscribe get svc syncscribe-client -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo 80); \
+	 if [ -n "$$LB_IP" ]; then echo "LoadBalancer: $$LB_IP:$$LB_PORT"; echo "Browser URL: http://$$LB_IP/"; else echo "LoadBalancer: (pending)"; fi; \
+	 echo "🔐 HTTPS URL (once cert is ACTIVE): https://$$DOMAIN"; \
+	 echo "✅ reset-online-all completed for tag $$TAG."
+
+# Build and push images with :latest via Cloud Build
+image:
+	@echo "🏷️  Building and pushing images (:latest) via Cloud Build..."
+	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; \
+	 echo "Using PROJECT_ID=$$PROJECT_ID"; \
+	 gcloud builds submit --config cloudbuild.yaml \
+	   --substitutions _SERVER_IMAGE=us.gcr.io/$$PROJECT_ID/syncscribe-server:latest,_CLIENT_IMAGE=us.gcr.io/$$PROJECT_ID/syncscribe-client:latest .
+	@$(MAKE) render-latest
+	@echo "✅ Images built and manifests rendered to .k8s-tmp/*.yaml (using :latest)"
+
+# Render manifests pointing to :latest into .k8s-tmp
+render-latest:
+	@echo "📝 Rendering manifests to .k8s-tmp with :latest images..."
+	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; \
+	 mkdir -p .k8s-tmp; \
+	 sed "s|REPLACE_SERVER_IMAGE|us.gcr.io/$$PROJECT_ID/syncscribe-server:latest|g" k8s/server.yaml > .k8s-tmp/server.yaml; \
+	 sed "s|REPLACE_CLIENT_IMAGE|us.gcr.io/$$PROJECT_ID/syncscribe-client:latest|g" k8s/client.yaml > .k8s-tmp/client.yaml; \
+	 echo "Rendered: .k8s-tmp/server.yaml, .k8s-tmp/client.yaml"
 
 # Take workloads offline (replicas = 0)
 offline-server:
@@ -290,6 +418,6 @@ offline-client:
 offline-all: offline-client offline-server
 	@echo "🧹 Removing external access (Service/Ingress)..."
 	@kubectl -n syncscribe get svc syncscribe-client >/dev/null 2>&1 && kubectl -n syncscribe delete svc syncscribe-client || echo "Service syncscribe-client not found (skipped)"
-	@kubectl -n syncscribe get ingress syncscribe-ingress >/dev/null 2>&1 && kubectl -n syncscribe delete ingress syncscribe-ingress || echo "Ingress syncscribe-ingress not found (skipped)"
+	@kubectl -n syncscribe get ingress syncscribe-client >/dev/null 2>&1 && kubectl -n syncscribe delete ingress syncscribe-client || echo "Ingress syncscribe-client not found (skipped)"
 	@echo "✅ Offline completed. Remaining resources:"
 	@kubectl -n syncscribe get deploy,svc,ingress || true

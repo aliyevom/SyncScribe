@@ -1,0 +1,24 @@
+---
+alwaysApply: true
+---
+# Enterprise-Scale Landing Zone Architecture
+
+This codebase follows Microsoft's Enterprise-Scale Landing Zone framework with the following key components:
+
+## Platform Layer
+- Platform/Policies: Central policy engine for governance
+- Platform/Modules: Core Azure building blocks
+- Platform/LandingZone: Subscription and spoke management
+- Products/Azure: Service deployment catalog
+
+## Key Principles
+1. All deployments must follow the hub-and-spoke networking model
+2. Identity and security controls are managed at the platform level
+3. Use OIDC federation for all pipeline authentications
+4. Every product subscription inherits platform guardrails automatically
+
+## Critical Paths
+- [Platform/Policies/Assignments](mdc:Platform-repo/Policies/Assignments) - Policy assignments
+- [Platform/Modules](mdc:Platform-repo/Modules) - Reusable infrastructure modules
+- [Products/Azure](mdc:Azure) - Product deployment templates
+- [.github/workflows](mdc:.github/workflows) - CI/CD pipeline definitions
