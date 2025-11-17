@@ -34,11 +34,12 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
         cd ~
     else
         # Try to find docker-compose.yml
-        COMPOSE_DIR=$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1 | xargs dirname)
-        if [ -n "$COMPOSE_DIR" ]; then
-            cd "$COMPOSE_DIR"
+        COMPOSE_FILE=$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1)
+        if [ -n "$COMPOSE_FILE" ] && [ -f "$COMPOSE_FILE" ]; then
+            cd "$(dirname "$COMPOSE_FILE")"
         else
             echo "Error: Could not find docker-compose.yml"
+            echo "Searched in: ~/meeting-transcriber, ~/, and ~/*"
             exit 1
         fi
     fi &&

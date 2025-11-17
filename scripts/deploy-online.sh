@@ -76,18 +76,19 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
         cd ~
     else
         # Try to find docker-compose.yml
-        COMPOSE_DIR=$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1 | xargs dirname)
-        if [ -n "$COMPOSE_DIR" ]; then
-            cd "$COMPOSE_DIR"
+        COMPOSE_FILE=$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1)
+        if [ -n "$COMPOSE_FILE" ] && [ -f "$COMPOSE_FILE" ]; then
+            cd "$(dirname "$COMPOSE_FILE")"
         else
             echo "Error: docker-compose.yml not found. Please run deploy-dev.sh first."
+            echo "Searched in: ~/meeting-transcriber, ~/, and ~/*"
             exit 1
         fi
     fi &&
     
     # Check if docker-compose.yml exists
     if [ ! -f docker-compose.yml ]; then
-        echo "Error: docker-compose.yml not found. Please run deploy-dev.sh first."
+        echo "Error: docker-compose.yml not found in current directory: $(pwd)"
         exit 1
     fi &&
     
@@ -157,8 +158,12 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
         elif [ -f ~/docker-compose.yml ]; then
             cd ~
         else
-            COMPOSE_DIR=$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1 | xargs dirname)
-            [ -n "$COMPOSE_DIR" ] && cd "$COMPOSE_DIR" || cd ~
+            COMPOSE_FILE=$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1)
+            if [ -n "$COMPOSE_FILE" ] && [ -f "$COMPOSE_FILE" ]; then
+                cd "$(dirname "$COMPOSE_FILE")"
+            else
+                cd ~
+            fi
         fi &&
         sudo docker-compose ps' || true
     exit 1
