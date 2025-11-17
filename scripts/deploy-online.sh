@@ -93,56 +93,61 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     
     # Start services (with retry logic)
     if ! sudo docker-compose up -d; then
-        echo '⚠ First attempt failed. Checking container status...' &&
+        echo "⚠ First attempt failed. Checking container status..." &&
         sudo docker-compose ps &&
-        echo 'Trying to restart...' &&
+        echo "Trying to restart..." &&
         sudo docker-compose down &&
         sleep 2 &&
         sudo docker-compose up -d
     fi &&
-    echo '✓ Containers started' &&
+    echo "✓ Containers started" &&
     
     # Wait for services to be ready
-    echo 'Waiting for services to initialize (15 seconds)...' &&
+    echo "Waiting for services to initialize (15 seconds)..." &&
     sleep 15 &&
     
     # Fix all file permissions (critical for images, worklets, etc.)
-    echo '' &&
-    echo '=== Fixing file permissions ===' &&
-    sudo docker exec syncscribe-client sh -c '
-        find /usr/share/nginx/html -type f -exec chmod 644 {} \; &&
-        find /usr/share/nginx/html -type d -exec chmod 755 {} \; &&
-        find /usr/share/nginx/html -name \"._*\" -delete &&
-        chmod 644 /usr/share/nginx/html/*.worklet.js 2>/dev/null || true &&
-        chmod 755 /usr/share/nginx/html/images 2>/dev/null || true &&
-        chmod -R 644 /usr/share/nginx/html/images/* 2>/dev/null || true &&
-        echo \"✓ Permissions fixed\"
-    ' &&
+    echo "" &&
+    echo "=== Fixing file permissions ===" &&
+    CLIENT_CONTAINER=$(sudo docker ps -q -f name=client) &&
+    if [ -n "$CLIENT_CONTAINER" ]; then
+        sudo docker exec "$CLIENT_CONTAINER" sh -c "
+            find /usr/share/nginx/html -type f -exec chmod 644 {} \; &&
+            find /usr/share/nginx/html -type d -exec chmod 755 {} \; &&
+            find /usr/share/nginx/html -name \"._*\" -delete &&
+            chmod 644 /usr/share/nginx/html/*.worklet.js 2>/dev/null || true &&
+            chmod 755 /usr/share/nginx/html/images 2>/dev/null || true &&
+            chmod -R 644 /usr/share/nginx/html/images/* 2>/dev/null || true &&
+            echo \"✓ Permissions fixed\"
+        "
+    else
+        echo "⚠ Client container not found, skipping permission fixes"
+    fi &&
     
     # Verify services
-    echo '' &&
-    echo '=== Service Status ===' &&
+    echo "" &&
+    echo "=== Service Status ===" &&
     sudo docker-compose ps &&
     
     # Health checks
-    echo '' &&
-    echo '=== Health Checks ===' &&
-    echo 'Server health:' &&
-    curl -s http://localhost:5002/healthz && echo '' || echo 'Server not responding' &&
-    echo '' &&
-    echo 'Client (main page):' &&
+    echo "" &&
+    echo "=== Health Checks ===" &&
+    echo "Server health:" &&
+    curl -s http://localhost:5002/healthz && echo "" || echo "Server not responding" &&
+    echo "" &&
+    echo "Client (main page):" &&
     curl -s -I http://localhost:80 | head -3 &&
-    echo '' &&
-    echo 'Audio worklet:' &&
+    echo "" &&
+    echo "Audio worklet:" &&
     curl -s -I http://localhost:80/audio-processor.worklet.js | head -3 &&
-    echo '' &&
-    echo 'Deepgram logo:' &&
+    echo "" &&
+    echo "Deepgram logo:" &&
     curl -s -I http://localhost:80/images/deepgram.svg | head -3 &&
-    echo '' &&
-    echo '=== External connectivity test ===' &&
-    echo 'Testing if application is accessible externally...' &&
-    curl -s -I http://localhost:80 2>&1 | head -3 || echo '⚠ External test failed (this is normal if testing from VM)'
-" $SSH_OPTS || {
+    echo "" &&
+    echo "=== External connectivity test ===" &&
+    echo "Testing if application is accessible externally..." &&
+    curl -s -I http://localhost:80 2>&1 | head -3 || echo "⚠ External test failed (this is normal if testing from VM)"
+' || {
     echo -e "${RED}Error: Failed to start services${NC}"
     echo -e "${YELLOW}Checking container status...${NC}"
     gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
