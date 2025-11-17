@@ -131,7 +131,17 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
 " $SSH_OPTS || {
     echo -e "${RED}Error: Failed to start services${NC}"
     echo -e "${YELLOW}Checking container status...${NC}"
-    gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "cd ~/meeting-transcriber && sudo docker-compose ps" || true
+    gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
+        # Find docker-compose.yml location
+        if [ -f ~/meeting-transcriber/docker-compose.yml ]; then
+            cd ~/meeting-transcriber
+        elif [ -f ~/docker-compose.yml ]; then
+            cd ~
+        else
+            COMPOSE_DIR=\$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1 | xargs dirname)
+            [ -n \"\$COMPOSE_DIR\" ] && cd \"\$COMPOSE_DIR\" || cd ~
+        fi &&
+        sudo docker-compose ps" || true
     exit 1
 }
 

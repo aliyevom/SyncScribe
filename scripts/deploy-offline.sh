@@ -27,7 +27,23 @@ if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
     SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
 fi
 gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
-    cd ~/meeting-transcriber &&
+    # Find docker-compose.yml location
+    if [ -f ~/meeting-transcriber/docker-compose.yml ]; then
+        cd ~/meeting-transcriber
+    elif [ -f ~/docker-compose.yml ]; then
+        cd ~
+    elif [ -f /home/\$(whoami)/meeting-transcriber/docker-compose.yml ]; then
+        cd /home/\$(whoami)/meeting-transcriber
+    else
+        # Try to find docker-compose.yml
+        COMPOSE_DIR=\$(find ~ -name docker-compose.yml -type f 2>/dev/null | head -1 | xargs dirname)
+        if [ -n \"\$COMPOSE_DIR\" ]; then
+            cd \"\$COMPOSE_DIR\"
+        else
+            echo 'Error: Could not find docker-compose.yml'
+            exit 1
+        fi
+    fi &&
     sudo docker-compose down &&
     echo '✓ Containers stopped'
 "
