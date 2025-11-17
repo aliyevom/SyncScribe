@@ -99,12 +99,18 @@ if [ "$DEPLOY_CODE" = "true" ]; then
     
     # Deploy code via git clone
     # Pass environment variables to the remote command so they're available for .env creation
+    # Use base64 encoding to safely pass API keys through SSH (handles special characters)
+    OPENAI_API_KEY_B64=$(echo -n "$OPENAI_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$OPENAI_API_KEY" | base64 | tr -d '\n')
+    DEEPGRAM_API_KEY_B64=$(echo -n "$DEEPGRAM_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$DEEPGRAM_API_KEY" | base64 | tr -d '\n')
+    ASSEMBLYAI_API_KEY_B64=$(echo -n "$ASSEMBLYAI_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$ASSEMBLYAI_API_KEY" | base64 | tr -d '\n')
+    REACT_APP_SERVER_URL_B64=$(echo -n "$REACT_APP_SERVER_URL" | base64 -w 0 2>/dev/null || echo -n "$REACT_APP_SERVER_URL" | base64 | tr -d '\n')
+    
     gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
-        # Import environment variables from parent shell
-        export OPENAI_API_KEY='${OPENAI_API_KEY}'
-        export DEEPGRAM_API_KEY='${DEEPGRAM_API_KEY}'
-        export ASSEMBLYAI_API_KEY='${ASSEMBLYAI_API_KEY}'
-        export REACT_APP_SERVER_URL='${REACT_APP_SERVER_URL}'
+        # Decode environment variables from base64 (handles special characters safely)
+        export OPENAI_API_KEY=\$(echo '$OPENAI_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
+        export DEEPGRAM_API_KEY=\$(echo '$DEEPGRAM_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
+        export ASSEMBLYAI_API_KEY=\$(echo '$ASSEMBLYAI_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
+        export REACT_APP_SERVER_URL=\$(echo '$REACT_APP_SERVER_URL_B64' | base64 -d 2>/dev/null || echo 'https://syncscribe.app')
         
         # Ensure git is installed
         if ! command -v git >/dev/null 2>&1; then
