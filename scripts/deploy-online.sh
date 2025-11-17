@@ -13,6 +13,12 @@ NC='\033[0m'
 VM_NAME="${VM_NAME:-syncscribe-vm}"
 ZONE="${ZONE:-us-central1-a}"
 
+# Setup SSH options for service account impersonation
+SSH_OPTS="--zone=$ZONE --quiet"
+if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
+    SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
+fi
+
 echo -e "${BLUE}======================================${NC}"
 echo -e "${BLUE}  SyncScribe Online Mode${NC}"
 echo -e "${BLUE}======================================${NC}"
@@ -36,7 +42,7 @@ fi
 echo -e "${YELLOW}Step 2: Waiting for SSH connection...${NC}"
 SSH_READY=false
 for i in {1..60}; do
-    if timeout 5 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command="echo 'SSH ready'" 2>/dev/null; then
+    if timeout 5 gcloud compute ssh "$VM_NAME" $SSH_OPTS --command="echo 'SSH ready'" 2>/dev/null; then
         SSH_READY=true
         break
     fi
@@ -53,7 +59,7 @@ fi
 
 # Start Docker daemon if needed
 echo -e "${YELLOW}Step 3: Ensuring Docker is running...${NC}"
-gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command "
+gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
     sudo systemctl start docker 2>/dev/null || true &&
     sudo systemctl enable docker 2>/dev/null || true &&
     sleep 3 &&
