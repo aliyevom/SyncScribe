@@ -125,7 +125,7 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
 " $SSH_OPTS || {
     echo -e "${RED}Error: Failed to start services${NC}"
     echo -e "${YELLOW}Checking container status...${NC}"
-    gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command "cd ~/meeting-transcriber && sudo docker-compose ps" || true
+    gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "cd ~/meeting-transcriber && sudo docker-compose ps" || true
     exit 1
 }
 
