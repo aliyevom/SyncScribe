@@ -175,8 +175,8 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             echo 'Cloning repository from GitHub...' &&
             rm -rf ~/meeting-transcriber &&
             git clone --depth 1 --branch '$BRANCH' '$GITHUB_REPO_URL' ~/meeting-transcriber 2>&1 || {
-                echo '[X] Clone failed, trying main branch...' &&
-                git clone --depth 1 'https://github.com/$GITHUB_REPO.git' ~/meeting-transcriber 2>&1 || {
+                echo '[X] Clone failed for branch '$BRANCH', trying main branch...' &&
+                git clone --depth 1 --branch main 'https://github.com/$GITHUB_REPO.git' ~/meeting-transcriber 2>&1 || {
                     echo '[X] Git clone failed'
                     exit 1
                 }
@@ -191,16 +191,40 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         else
             echo 'Repository exists, pulling latest changes...' &&
             cd ~/meeting-transcriber &&
-            git fetch origin 2>&1 &&
-            git checkout '$BRANCH' 2>/dev/null || git checkout main 2>/dev/null || true &&
-            git pull origin '$BRANCH' 2>&1 || git pull origin main 2>&1 || {
-                echo '[X] Git pull failed, but continuing with existing code'
-            } &&
+            # Fetch all branches and tags (including the target branch)
+            echo 'Fetching all branches from remote...' &&
+            git fetch origin --prune --all 2>&1 &&
+            # Reset any local changes that might conflict
+            git reset --hard HEAD 2>&1 || true &&
+            git clean -fd 2>&1 || true &&
+            # Check if the branch exists on remote
+            if git ls-remote --heads origin '$BRANCH' | grep -q '$BRANCH'; then
+                echo 'Branch '$BRANCH' exists on remote, switching to it...' &&
+                # Force checkout/create the branch tracking remote
+                git checkout -B '$BRANCH' origin/'$BRANCH' 2>&1 &&
+                git pull origin '$BRANCH' 2>&1 || {
+                    echo '[X] Git pull failed for '$BRANCH', but branch is checked out'
+                }
+            else
+                echo '[X] Branch '$BRANCH' not found on remote, checking out main...' &&
+                git checkout -B main origin/main 2>&1 &&
+                git pull origin main 2>&1 || {
+                    echo '[X] Git pull failed, but continuing with existing code'
+                }
+            fi &&
             # Update submodules if they exist
             if [ -f .gitmodules ]; then
-                git submodule update --init --recursive --depth 1 2>&1 || echo '[X] Submodule update failed, continuing...'
+                echo 'Updating submodules...' &&
+                # Sync submodule URLs first
+                git submodule sync --recursive 2>&1 || true &&
+                # Update submodules to match the current commit
+                git submodule update --init --recursive --depth 1 2>&1 || {
+                    echo '[X] Submodule update failed, trying alternative method...'
+                    # Try to reset submodules to the commit referenced in parent repo
+                    git submodule foreach --recursive 'git fetch origin && git checkout $(git rev-parse HEAD)' 2>&1 || true
+                }
             fi &&
-            echo '[OK] Repository updated'
+            echo '[OK] Repository updated to branch: '$BRANCH''
         fi &&
         
         # Restore or create .env file
