@@ -371,7 +371,8 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
                 [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\\\"\$GCS_PRIVATE_KEY\\\"\" || true
                 [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
-                # Don't add REACT_APP_RAG_PASSWORD to .env file (it's a build arg)
+                # Add REACT_APP_RAG_PASSWORD to .env so it's available for docker-compose build
+                [ -n \"\$REACT_APP_RAG_PASSWORD\" ] && echo \"REACT_APP_RAG_PASSWORD=\$REACT_APP_RAG_PASSWORD\" || true
             } > ~/meeting-transcriber/.env &&
             echo '[OK] .env file created from environment variables'
             ENV_CREATED=true
@@ -468,12 +469,18 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     [ -f .env ] && source .env
     set +a
     
+    # Ensure REACT_APP_RAG_PASSWORD is available (it might be in .env but not exported)
+    if [ -z \"\$REACT_APP_RAG_PASSWORD\" ] && [ -f .env ]; then
+        export REACT_APP_RAG_PASSWORD=\$(grep '^REACT_APP_RAG_PASSWORD=' .env | cut -d'=' -f2- | sed 's/^\"//;s/\"\$//')
+    fi
+    
     # Rebuild and start services
-    echo "Building services..." &&
+    echo \"Building services...\" &&
+    echo \"REACT_APP_RAG_PASSWORD is set: \$([ -n \\\"\$REACT_APP_RAG_PASSWORD\\\" ] && echo 'yes' || echo 'no')\" &&
     # Pass build arguments explicitly
     if ! sudo docker-compose build --no-cache \
-        --build-arg REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL}" \
-        --build-arg REACT_APP_RAG_PASSWORD="${REACT_APP_RAG_PASSWORD}"; then
+        --build-arg REACT_APP_SERVER_URL=\"\${REACT_APP_SERVER_URL}\" \
+        --build-arg REACT_APP_RAG_PASSWORD=\"\${REACT_APP_RAG_PASSWORD}\"; then
         echo "[X] Build failed, trying without build args..."
         sudo docker-compose build --no-cache
     fi &&
