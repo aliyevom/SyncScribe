@@ -224,24 +224,40 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 echo 'Updating submodules...' &&
                 # Sync submodule URLs first
                 git submodule sync --recursive 2>&1 || true &&
-                # For client submodule, check if we need to update to feature/RAG-UI branch
-                if [ -d client/.git ]; then
-                    echo 'Updating client submodule to feature/RAG-UI branch...' &&
-                    cd client &&
-                    git fetch origin feature/RAG-UI:feature/RAG-UI 2>&1 || true &&
-                    git checkout feature/RAG-UI 2>&1 || {
-                        echo '[X] Failed to checkout feature/RAG-UI, using default...'
-                        git checkout master 2>&1 || git checkout main 2>&1 || true
-                    } &&
-                    git pull origin feature/RAG-UI 2>&1 || git pull origin master 2>&1 || true &&
-                    cd ..
-                fi &&
-                # Update all submodules to match the current commit
+                # Get the expected submodule commit from parent repo
+                EXPECTED_CLIENT_COMMIT=$(git ls-tree HEAD client | awk '{print $3}') &&
+                echo 'Expected client submodule commit: '$EXPECTED_CLIENT_COMMIT &&
+                # Update all submodules to match the current commit in parent repo
                 git submodule update --init --recursive --depth 1 2>&1 || {
-                    echo '[X] Submodule update failed, trying alternative method...'
-                    # Try to reset submodules to the commit referenced in parent repo
-                    git submodule foreach --recursive 'git fetch origin && git checkout $(git rev-parse HEAD)' 2>&1 || true
-                }
+                    echo '[X] Standard submodule update failed, trying alternative method...'
+                    # Force update submodules to match parent repo commit
+                    if [ -d client/.git ] && [ -n "$EXPECTED_CLIENT_COMMIT" ]; then
+                        echo 'Forcing client submodule to expected commit...' &&
+                        cd client &&
+                        git fetch origin 2>&1 || true &&
+                        git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
+                            echo '[X] Failed to checkout expected commit, trying feature/RAG-UI branch...'
+                            git fetch origin feature/RAG-UI 2>&1 || true &&
+                            git checkout feature/RAG-UI 2>&1 || git checkout master 2>&1 || true
+                        } &&
+                        cd ..
+                    fi
+                } &&
+                # Verify submodule is at correct commit
+                if [ -d client/.git ]; then
+                    CURRENT_CLIENT_COMMIT=$(cd client && git rev-parse HEAD) &&
+                    echo 'Current client submodule commit: '$CURRENT_CLIENT_COMMIT &&
+                    if [ "$CURRENT_CLIENT_COMMIT" != "$EXPECTED_CLIENT_COMMIT" ]; then
+                        echo '[X] Client submodule commit mismatch! Expected: '$EXPECTED_CLIENT_COMMIT', Got: '$CURRENT_CLIENT_COMMIT
+                        echo 'Attempting to fix...' &&
+                        cd client &&
+                        git fetch origin 2>&1 || true &&
+                        git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || true &&
+                        cd ..
+                    else
+                        echo '[OK] Client submodule is at correct commit'
+                    fi
+                fi
             fi &&
             echo '[OK] Repository updated to branch: '$BRANCH''
         fi &&
