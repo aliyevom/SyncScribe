@@ -38,7 +38,6 @@ on:
         required: true
         type: choice
         options:
-          - deploy-offline
           - deploy-online
           - deploy-latest
         default: deploy-online
@@ -321,10 +320,10 @@ jobs:
               else
                 # Fallback: clean first, then fetch and reset
                 git clean -fd &&
-                git fetch origin main &&
-                git reset --hard origin/main &&
+              git fetch origin main &&
+              git reset --hard origin/main &&
                 git checkout -B main origin/main &&
-                echo '[OK] Repository updated to main'
+              echo '[OK] Repository updated to main'
               fi
             fi &&
             
@@ -350,7 +349,7 @@ jobs:
               else
                 # Fallback
                 git clean -fd &&
-                git fetch origin master &&
+              git fetch origin master &&
                 git reset --hard origin/master &&
                 git checkout -B master origin/master &&
                 echo '[OK] Client submodule updated to master'
