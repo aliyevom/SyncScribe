@@ -191,25 +191,37 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         else
             echo 'Repository exists, pulling latest changes...' &&
             cd ~/meeting-transcriber &&
-            # Fetch all branches and tags (including the target branch)
-            echo 'Fetching all branches from remote...' &&
-            git fetch --prune --all 2>&1 &&
+            # Clean up any problematic remote references
+            git remote prune origin 2>&1 || true &&
             # Reset any local changes that might conflict
             git reset --hard HEAD 2>&1 || true &&
             git clean -fd 2>&1 || true &&
+            # Fetch from origin (without --all to avoid issues)
+            echo 'Fetching from origin...' &&
+            git fetch origin 2>&1 || {
+                echo '[X] Git fetch failed, trying to continue...'
+            } &&
             # Check if the branch exists on remote
-            if git ls-remote --heads origin '$BRANCH' | grep -q '$BRANCH'; then
+            if git ls-remote --heads origin '$BRANCH' 2>&1 | grep -q 'refs/heads/'$BRANCH'$'; then
                 echo 'Branch '$BRANCH' exists on remote, switching to it...' &&
-                # Fetch the specific branch first
-                git fetch origin '$BRANCH':'$BRANCH' 2>&1 || true &&
-                # Force checkout/create the branch tracking remote
-                git checkout -B '$BRANCH' origin/'$BRANCH' 2>&1 || {
-                    echo '[X] Failed to checkout '$BRANCH', trying to create from remote...'
-                    git branch -D '$BRANCH' 2>&1 || true &&
-                    git checkout -b '$BRANCH' origin/'$BRANCH' 2>&1
-                } &&
+                # Fetch the specific branch
+                git fetch origin '$BRANCH' 2>&1 || true &&
+                # Checkout the branch, creating it if needed
+                if git show-ref --verify --quiet refs/heads/'$BRANCH'; then
+                    echo 'Local branch '$BRANCH' exists, checking it out...' &&
+                    git checkout '$BRANCH' 2>&1 &&
+                    git reset --hard origin/'$BRANCH' 2>&1 || true
+                else
+                    echo 'Creating local branch '$BRANCH' tracking origin/'$BRANCH'...' &&
+                    git checkout -b '$BRANCH' origin/'$BRANCH' 2>&1 || {
+                        echo '[X] Failed to create branch, trying alternative...'
+                        git branch '$BRANCH' origin/'$BRANCH' 2>&1 || true &&
+                        git checkout '$BRANCH' 2>&1 || true
+                    }
+                fi &&
+                # Pull latest changes
                 git pull origin '$BRANCH' 2>&1 || {
-                    echo '[X] Git pull failed for '$BRANCH', but branch is checked out'
+                    echo '[X] Git pull failed, but branch is checked out'
                 }
             else
                 echo '[X] Branch '$BRANCH' not found on remote, checking out main...' &&
@@ -225,39 +237,60 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 # Sync submodule URLs first
                 git submodule sync --recursive 2>&1 || true &&
                 # Get the expected submodule commit from parent repo
-                EXPECTED_CLIENT_COMMIT=$(git ls-tree HEAD client | awk '{print $3}') &&
-                echo 'Expected client submodule commit: '$EXPECTED_CLIENT_COMMIT &&
-                # Update all submodules to match the current commit in parent repo
-                git submodule update --init --recursive --depth 1 2>&1 || {
-                    echo '[X] Standard submodule update failed, trying alternative method...'
-                    # Force update submodules to match parent repo commit
-                    if [ -d client/.git ] && [ -n "$EXPECTED_CLIENT_COMMIT" ]; then
-                        echo 'Forcing client submodule to expected commit...' &&
-                        cd client &&
-                        git fetch origin 2>&1 || true &&
-                        git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
-                            echo '[X] Failed to checkout expected commit, updating to latest master...'
-                            git fetch origin master 2>&1 || true &&
-                            git checkout master 2>&1 || true &&
-                            git pull origin master 2>&1 || true
-                        } &&
-                        cd ..
+                EXPECTED_CLIENT_COMMIT=$(git ls-tree HEAD client 2>&1 | awk '{print $3}' | head -1) &&
+                if [ -n "$EXPECTED_CLIENT_COMMIT" ] && [ "$EXPECTED_CLIENT_COMMIT" != "client" ]; then
+                    echo 'Expected client submodule commit: '$EXPECTED_CLIENT_COMMIT &&
+                    # Update submodule to the expected commit
+                    git submodule update --init --recursive --depth 1 2>&1 || {
+                        echo '[X] Standard submodule update failed, trying alternative method...'
+                        # Force update submodules to match parent repo commit
+                        if [ -d client/.git ]; then
+                            echo 'Forcing client submodule to expected commit...' &&
+                            cd client &&
+                            git fetch origin 2>&1 || true &&
+                            git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
+                                echo '[X] Failed to checkout expected commit '$EXPECTED_CLIENT_COMMIT', updating to latest master...'
+                                git fetch origin master 2>&1 || true &&
+                                git checkout master 2>&1 || true &&
+                                git pull origin master 2>&1 || true
+                            } &&
+                            cd ..
+                        elif [ ! -d client ]; then
+                            echo 'Client submodule directory missing, initializing...' &&
+                            git submodule update --init client 2>&1 || true
+                        fi
+                    } &&
+                    # Verify submodule is at correct commit
+                    if [ -d client/.git ]; then
+                        CURRENT_CLIENT_COMMIT=$(cd client && git rev-parse HEAD 2>&1) &&
+                        echo 'Current client submodule commit: '$CURRENT_CLIENT_COMMIT &&
+                        if [ "$CURRENT_CLIENT_COMMIT" != "$EXPECTED_CLIENT_COMMIT" ]; then
+                            echo '[X] Client submodule commit mismatch! Expected: '$EXPECTED_CLIENT_COMMIT', Got: '$CURRENT_CLIENT_COMMIT
+                            echo 'Attempting to fix by updating to expected commit...' &&
+                            cd client &&
+                            git fetch origin 2>&1 || true &&
+                            git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
+                                echo '[X] Failed to checkout expected commit, updating to latest master...'
+                                git fetch origin master 2>&1 || true &&
+                                git checkout master 2>&1 || true &&
+                                git pull origin master 2>&1 || true
+                            } &&
+                            cd ..
+                        else
+                            echo '[OK] Client submodule is at correct commit'
+                        fi
                     fi
-                } &&
-                # Verify submodule is at correct commit
-                if [ -d client/.git ]; then
-                    CURRENT_CLIENT_COMMIT=$(cd client && git rev-parse HEAD) &&
-                    echo 'Current client submodule commit: '$CURRENT_CLIENT_COMMIT &&
-                    if [ "$CURRENT_CLIENT_COMMIT" != "$EXPECTED_CLIENT_COMMIT" ]; then
-                        echo '[X] Client submodule commit mismatch! Expected: '$EXPECTED_CLIENT_COMMIT', Got: '$CURRENT_CLIENT_COMMIT
-                        echo 'Attempting to fix by updating to latest master...' &&
+                else
+                    echo '[X] Could not determine expected client submodule commit, updating to latest master...' &&
+                    if [ -d client/.git ]; then
                         cd client &&
                         git fetch origin master 2>&1 || true &&
                         git checkout master 2>&1 || true &&
                         git pull origin master 2>&1 || true &&
                         cd ..
-                    else
-                        echo '[OK] Client submodule is at correct commit'
+                    elif [ ! -d client ]; then
+                        echo 'Initializing client submodule...' &&
+                        git submodule update --init --recursive client 2>&1 || true
                     fi
                 fi
             fi &&
