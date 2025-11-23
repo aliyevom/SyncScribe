@@ -302,7 +302,7 @@ jobs:
             else
               echo 'Updating SyncScribe repository to main branch...' &&
               git fetch origin main &&
-              git checkout main &&
+              git checkout -B main origin/main 2>/dev/null || git checkout main &&
               git reset --hard origin/main &&
               echo '[OK] Repository updated to main'
             fi &&
@@ -314,8 +314,8 @@ jobs:
               git submodule update --init --recursive --depth 1 &&
               cd client &&
               git fetch origin master &&
-              git checkout master &&
-              git pull origin master &&
+              git checkout -B master origin/master 2>/dev/null || git checkout master &&
+              git reset --hard origin/master &&
               cd .. &&
               echo '[OK] Client submodule updated to master'
             fi &&
@@ -345,7 +345,9 @@ jobs:
             
             # Build and start containers
             set -a && [ -f .env ] && source .env && set +a &&
-            sudo docker-compose down 2>/dev/null || true &&
+            # Remove any existing containers to avoid ContainerConfig errors
+            sudo docker-compose down --remove-orphans 2>/dev/null || true &&
+            sudo docker ps -a --filter 'name=syncscribe' --format '{{.ID}}' | xargs -r sudo docker rm -f 2>/dev/null || true &&
             sudo docker-compose build --no-cache \
               --build-arg REACT_APP_SERVER_URL=\"\${REACT_APP_SERVER_URL}\" \
               --build-arg REACT_APP_RAG_PASSWORD=\"\${REACT_APP_RAG_PASSWORD}\" &&
