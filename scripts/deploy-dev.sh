@@ -28,6 +28,31 @@ fi
 
 # Create temporary archive excluding unnecessary files
 echo -e "${YELLOW}Step 1: Creating deployment archive...${NC}"
+
+# Create a temporary combined .env file for deployment
+echo "Generating .env for deployment..."
+> .env.deploy
+if [ -f ".env" ]; then cat .env >> .env.deploy; echo "" >> .env.deploy; fi
+if [ -f "server/.env" ]; then cat server/.env >> .env.deploy; echo "" >> .env.deploy; fi
+
+# Extract GCS credentials from key.json if available and not in .env
+if [ -f "client/key.json" ]; then
+    if ! grep -q "GCS_CLIENT_EMAIL" .env.deploy; then
+        echo "Extracting GCS credentials from client/key.json..."
+        # Simple extraction using grep/sed/awk (assuming standard JSON format)
+        CLIENT_EMAIL=$(grep '"client_email":' client/key.json | cut -d'"' -f4)
+        # Extract private key (handling newlines is tricky in shell, use node)
+        PRIVATE_KEY=$(node -e "console.log(require('./client/key.json').private_key.replace(/\n/g, '\\\\n'))")
+        
+        echo "GCS_CLIENT_EMAIL=$CLIENT_EMAIL" >> .env.deploy
+        echo "GCS_PRIVATE_KEY=\"$PRIVATE_KEY\"" >> .env.deploy
+    fi
+fi
+
+# Add build-time variables
+echo "REACT_APP_SERVER_URL=https://syncscribe.app" >> .env.deploy
+echo "REACT_APP_RAG_PASSWORD=apple" >> .env.deploy
+
 TMP_ARCHIVE="/tmp/syncscribe-dev-$(date +%s).tar.gz"
 tar czf "$TMP_ARCHIVE" \
     --exclude '.git' \
@@ -37,15 +62,21 @@ tar czf "$TMP_ARCHIVE" \
     --exclude 'client/build' \
     --exclude '.k8s-tmp' \
     --exclude '.env' \
+    --exclude 'server/.env' \
+    --exclude 'client/.env' \
     --exclude '*.log' \
     --exclude '.DS_Store' \
     -C "$(pwd)" .
 
-echo -e "${GREEN}✓ Archive created${NC}"
+echo -e "${GREEN}[OK] Archive created${NC}"
 
 # Upload to VM
 echo -e "${YELLOW}Step 2: Uploading to VM...${NC}"
 gcloud compute scp --zone="$ZONE" "$TMP_ARCHIVE" "$VM_NAME":~/meeting-transcriber-archive.tar.gz
+gcloud compute scp --zone="$ZONE" .env.deploy "$VM_NAME":~/meeting-transcriber.env
+
+# Cleanup local temp .env
+rm .env.deploy
 
 # Extract and deploy on VM
 BUILD_VERSION="dev-$(date +%Y%m%d-%H%M%S)"
@@ -58,9 +89,22 @@ gcloud compute ssh "$VM_NAME" --zone="$ZONE" --command "
     tar xzf ~/meeting-transcriber-archive.tar.gz --strip-components=0 &&
     rm ~/meeting-transcriber-archive.tar.gz &&
     
+    # Move uploaded .env to correct location
+    mv ~/meeting-transcriber.env .env &&
+    
     echo '=== Building and deploying services ===' &&
     sudo docker-compose down &&
-    sudo docker-compose build --no-cache --build-arg BUILD_VERSION=${BUILD_VERSION} --build-arg BUILD_TIMESTAMP=${BUILD_TIMESTAMP} &&
+    
+    # Load environment variables for the shell command
+    set -a
+    source .env
+    set +a
+    
+    sudo docker-compose build --no-cache \
+        --build-arg BUILD_VERSION=${BUILD_VERSION} \
+        --build-arg BUILD_TIMESTAMP=${BUILD_TIMESTAMP} \
+        --build-arg REACT_APP_SERVER_URL=\${REACT_APP_SERVER_URL} \
+        --build-arg REACT_APP_RAG_PASSWORD=\${REACT_APP_RAG_PASSWORD} &&
     sudo docker-compose up -d &&
     
     echo '' &&

@@ -15,6 +15,14 @@ services:
       - OPENAI_API_KEY=${OPENAI_API_KEY}
       - DEEPGRAM_API_KEY=${DEEPGRAM_API_KEY}
       - ASSEMBLYAI_API_KEY=${ASSEMBLYAI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - GCS_PROJECT_ID=${GCS_PROJECT_ID}
+      - GCS_BUCKET_N1=${GCS_BUCKET_N1}
+      - GCS_BUCKET_U1=${GCS_BUCKET_U1}
+      - GCS_CLIENT_EMAIL=${GCS_CLIENT_EMAIL}
+      - GCS_PRIVATE_KEY=${GCS_PRIVATE_KEY}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS}
     volumes:
       - ./server/team-data.json:/app/server/team-data.json:ro
       - ./server/meeting-tags.json:/app/server/meeting-tags.json:ro
@@ -35,6 +43,7 @@ services:
       dockerfile: Dockerfile.client.docker
       args:
         - REACT_APP_SERVER_URL=${REACT_APP_SERVER_URL:-http://localhost:5002}
+        - REACT_APP_RAG_PASSWORD=${REACT_APP_RAG_PASSWORD}
     container_name: syncscribe-client
     ports:
       - "80:80"

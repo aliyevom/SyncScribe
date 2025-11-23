@@ -5,13 +5,19 @@ name: SyncScribe VM Control
 #    - VM_NAME: syncscribe-vm (optional, has default)
 #    - VM_ZONE: us-central1-a (optional, has default)
 #    - REACT_APP_SERVER_URL: https://syncscribe.app (optional, has default)
+#    - GCS_BUCKET_N1: syncscribe-n1 (REQUIRED - update from old GCS_NG_BUCKET)
+#    - GCS_BUCKET_U1: syncscribe-u1 (REQUIRED - update from old GCS_UKG_BUCKET)
 #
 # 2. Add GitHub Repository Secrets (Settings > Secrets and variables > Actions > Secrets):
 #    - OPENAI_API_KEY: Your OpenAI API key
 #    - DEEPGRAM_API_KEY: Your Deepgram API key
 #    - ASSEMBLYAI_API_KEY: Your AssemblyAI API key
+#    - OPENROUTER_API_KEY: Your OpenRouter API key
+#    - GCS_CLIENT_EMAIL: GCS service account email
+#    - GCS_PRIVATE_KEY: GCS service account private key
 #    - GCP_WIF_PROVIDER: Workload Identity Federation provider
 #    - GCP_WIF_SERVICE_ACCOUNT: Service account email for WIF
+#    - REACT_APP_RAG_PASSWORD: Optional RAG password (leave empty for production)
 #
 # 3. Grant service account permissions (GCP_WIF_SERVICE_ACCOUNT secret):
 #    gcloud projects add-iam-policy-binding meeting-trans-443019 \
@@ -77,9 +83,9 @@ jobs:
             --zone="$VM_ZONE" \
             --project="$GCP_PROJECT_ID" \
             --format="get(status,networkInterfaces[0].accessConfigs[0].natIP)" 2>&1; then
-            echo "✓ VM access verified"
+            echo "[OK] VM access verified"
           else
-            echo "❌ Error: Service account lacks required permissions"
+            echo "[X] Error: Service account lacks required permissions"
             echo ""
             echo "Required permissions:"
             echo "  - compute.instances.get"
@@ -122,17 +128,30 @@ jobs:
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
+          # Use the branch that triggered this workflow (from "Use workflow from" dropdown)
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
-          GITHUB_REF: ${{ github.ref }}
+          GITHUB_REF: ${{ github.ref }}  # This will be the selected branch (e.g., refs/heads/your-branch)
           DEPLOY_CODE: "true"
           # API Keys from GitHub Secrets (will be injected into .env file on VM)
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
           ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # GCS Credentials from Secrets
+          GCS_CLIENT_EMAIL: ${{ secrets.GCS_CLIENT_EMAIL }}
+          GCS_PRIVATE_KEY: ${{ secrets.GCS_PRIVATE_KEY }}
+          # GCS Configuration (set in GitHub Repository Variables)
+          # NOTE: Update GitHub Variables to use GCS_BUCKET_N1 and GCS_BUCKET_U1 (not GCS_NG_BUCKET/GCS_UKG_BUCKET)
+          GCS_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+          GCS_BUCKET_N1: ${{ vars.GCS_BUCKET_N1 }}
+          GCS_BUCKET_U1: ${{ vars.GCS_BUCKET_U1 }}
           REACT_APP_SERVER_URL: ${{ vars.REACT_APP_SERVER_URL || 'https://syncscribe.app' }}
+          # Optional: Set RAG password for specific environments via secrets
+          REACT_APP_RAG_PASSWORD: ${{ secrets.REACT_APP_RAG_PASSWORD }}
         run: |
           echo "Running deploy-online.sh..."
+          echo "Deploying from branch: ${{ github.ref }}"
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
           export GITHUB_REPOSITORY="$GITHUB_REPOSITORY"
@@ -143,7 +162,14 @@ jobs:
           export OPENAI_API_KEY="$OPENAI_API_KEY"
           export DEEPGRAM_API_KEY="$DEEPGRAM_API_KEY"
           export ASSEMBLYAI_API_KEY="$ASSEMBLYAI_API_KEY"
+          export OPENROUTER_API_KEY="$OPENROUTER_API_KEY"
+          export GCS_CLIENT_EMAIL="$GCS_CLIENT_EMAIL"
+          export GCS_PRIVATE_KEY="$GCS_PRIVATE_KEY"
+          export GCS_PROJECT_ID="$GCS_PROJECT_ID"
+          export GCS_BUCKET_N1="$GCS_BUCKET_N1"
+          export GCS_BUCKET_U1="$GCS_BUCKET_U1"
           export REACT_APP_SERVER_URL="$REACT_APP_SERVER_URL"
+          export REACT_APP_RAG_PASSWORD="$REACT_APP_RAG_PASSWORD"
           # Impersonate VM's service account for SSH access
           export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
           ./scripts/deploy-online.sh
@@ -175,9 +201,9 @@ jobs:
           if gcloud compute ssh "$VM_NAME" $SSH_OPTS \
             --project="$GCP_PROJECT_ID" \
             --command="cd ~/meeting-transcriber && sudo docker-compose ps 2>&1" 2>&1; then
-            echo "✓ Container status retrieved"
+            echo "[OK] Container status retrieved"
           else
-            echo "⚠ Could not check container status"
+            echo "[X] Could not check container status"
             echo "  This may be due to:"
             echo "  - VM is still starting up"
             echo "  - SSH connection issues"

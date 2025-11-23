@@ -1,7 +1,7 @@
 # SyncScribe Makefile
 # Comprehensive project management commands
 
-.PHONY: help install start start-server start-client stop clean setup dev build test lint format update-team tag-meeting analyze-tags monitor-server monitor-client list-server list-client online-server online-client offline-server offline-client online-all offline-all image render-latest purge-all purge-workloads purge-gclb purge-cluster purge-everything reset-online-all
+.PHONY: help install start start-server start-client stop clean setup dev build test lint format update-team tag-meeting analyze-tags monitor-server monitor-client list-server list-client online-server online-client offline-server offline-client online-all offline-all image render-latest purge-all purge-workloads purge-gclb purge-cluster purge-everything reset-online-all setup-gcs upload-samples test-documents
 
 # Default target - show help
 help:
@@ -16,6 +16,11 @@ help:
 	@echo "  make setup         - Full setup (install + configure)"
 	@echo "  make dev           - Development mode with hot reload"
 	@echo "  make build         - Build production version"
+	@echo ""
+	@echo "Document RAG System:"
+	@echo "  make setup-gcs     - Setup GCS buckets and service account"
+	@echo "  make upload-samples- Upload sample documents to GCS"
+	@echo "  make test-documents- Test document processing"
 	@echo ""
 	@echo "Kubernetes monitoring:"
 	@echo "  make monitor-server - Tail server logs (syncscribe namespace)"
@@ -49,48 +54,48 @@ help:
 
 # Install all dependencies
 install:
-	@echo "📦 Installing dependencies..."
+	@echo "[OK] Installing dependencies..."
 	@cd server && npm install
 	@cd client && npm install
-	@echo "✅ Dependencies installed"
+	@echo "[OK] Dependencies installed"
 
 # Start both server and client
 start:
-	@echo "🚀 Starting SyncScribe..."
+	@echo "[OK] Starting SyncScribe..."
 	@./setup.sh --skip-install --clean
 
 # Start only server
 start-server:
-	@echo "🖥️  Starting server..."
+	@echo "[OK] Starting server..."
 	@cd server && node index.js
 
 # Start only client
 start-client:
-	@echo "🌐 Starting client..."
+	@echo "[OK] Starting client..."
 	@cd client && npm start
 
 # Stop all processes
 stop:
-	@echo "🛑 Stopping all processes..."
+	@echo "[OK] Stopping all processes..."
 	@-lsof -ti:5002 | xargs kill -9 2>/dev/null || true
 	@-lsof -ti:3000 | xargs kill -9 2>/dev/null || true
-	@echo "✅ All processes stopped"
+	@echo "[OK] All processes stopped"
 
 # Clean ports and node_modules
 clean: stop
-	@echo "🧹 Cleaning project..."
+	@echo "[OK] Cleaning project..."
 	@rm -rf server/node_modules client/node_modules
 	@rm -f server/package-lock.json client/package-lock.json
-	@echo "✅ Project cleaned"
+	@echo "[OK] Project cleaned"
 
 # Full setup
 setup:
-	@echo "🔧 Setting up SyncScribe..."
+	@echo "[OK] Setting up SyncScribe..."
 	@./setup.sh
 
 # Development mode
 dev:
-	@echo "👨‍💻 Starting in development mode..."
+	@echo "[OK] Starting in development mode..."
 	@if command -v concurrently >/dev/null 2>&1; then \
 		concurrently -n "SERVER,CLIENT" -c "blue,green" \
 			"cd server && nodemon index.js" \
@@ -103,19 +108,19 @@ dev:
 
 # Build production
 build:
-	@echo "🏗️  Building production version..."
+	@echo "[OK] Building production version..."
 	@cd client && npm run build
-	@echo "✅ Build complete"
+	@echo "[OK] Build complete"
 
 # Update team data
 update-team:
-	@echo "👥 Updating team data..."
+	@echo "[OK] Updating team data..."
 	@cp server/team-data-example.json server/team-data.json
-	@echo "✅ Team data updated. Edit server/team-data.json to customize."
+	@echo "[OK] Team data updated. Edit server/team-data.json to customize."
 
 # Create meeting tags configuration
 tag-meeting:
-	@echo "🏷️  Creating meeting tags configuration..."
+	@echo "[OK] Creating meeting tags configuration..."
 	@echo "Creating server/meeting-tags.json..."
 	@echo '{' > server/meeting-tags.json
 	@echo '  "tags": {' >> server/meeting-tags.json
@@ -143,23 +148,23 @@ tag-meeting:
 	@echo '    },' >> server/meeting-tags.json
 	@echo '    "type": {' >> server/meeting-tags.json
 	@echo '      "decision": {' >> server/meeting-tags.json
-	@echo '        "icon": "🎯",' >> server/meeting-tags.json
+	@echo '        "icon": "[OK]",' >> server/meeting-tags.json
 	@echo '        "aiPrompt": "Mark this as a key decision point"' >> server/meeting-tags.json
 	@echo '      },' >> server/meeting-tags.json
 	@echo '      "action": {' >> server/meeting-tags.json
-	@echo '        "icon": "📋",' >> server/meeting-tags.json
+	@echo '        "icon": "[OK]",' >> server/meeting-tags.json
 	@echo '        "aiPrompt": "This requires specific action items"' >> server/meeting-tags.json
 	@echo '      },' >> server/meeting-tags.json
 	@echo '      "blocker": {' >> server/meeting-tags.json
-	@echo '        "icon": "🚫",' >> server/meeting-tags.json
+	@echo '        "icon": "[X]",' >> server/meeting-tags.json
 	@echo '        "aiPrompt": "This is blocking progress and needs resolution"' >> server/meeting-tags.json
 	@echo '      },' >> server/meeting-tags.json
 	@echo '      "idea": {' >> server/meeting-tags.json
-	@echo '        "icon": "💡",' >> server/meeting-tags.json
+	@echo '        "icon": "[OK]",' >> server/meeting-tags.json
 	@echo '        "aiPrompt": "This is an idea or suggestion to explore"' >> server/meeting-tags.json
 	@echo '      },' >> server/meeting-tags.json
 	@echo '      "question": {' >> server/meeting-tags.json
-	@echo '        "icon": "❓",' >> server/meeting-tags.json
+	@echo '        "icon": "[OK]",' >> server/meeting-tags.json
 	@echo '        "aiPrompt": "This requires clarification or answers"' >> server/meeting-tags.json
 	@echo '      }' >> server/meeting-tags.json
 	@echo '    },' >> server/meeting-tags.json
@@ -215,11 +220,11 @@ tag-meeting:
 	@echo '    }' >> server/meeting-tags.json
 	@echo '  ]' >> server/meeting-tags.json
 	@echo '}' >> server/meeting-tags.json
-	@echo "✅ Meeting tags configuration created"
+	@echo "[OK] Meeting tags configuration created"
 
 # Analyze current tags
 analyze-tags:
-	@echo "📊 Tag Analytics:"
+	@echo "[OK] Tag Analytics:"
 	@echo "================"
 	@if [ -f server/meeting-tags.json ]; then \
 		echo "Available tags:"; \
@@ -230,22 +235,39 @@ analyze-tags:
 
 # Run tests
 test:
-	@echo "🧪 Running tests..."
+	@echo "[OK] Running tests..."
 	@cd server && npm test
 	@cd client && npm test
 
 # Run linters
 lint:
-	@echo "🔍 Running linters..."
+	@echo "[OK] Running linters..."
 	@cd client && npm run lint || true
-	@echo "✅ Linting complete"
+	@echo "[OK] Linting complete"
 
 # Format code
 format:
-	@echo "✨ Formatting code..."
+	@echo "[OK] Formatting code..."
 	@cd client && npx prettier --write "src/**/*.{js,jsx,ts,tsx,css,md}" || true
 	@cd server && npx prettier --write "**/*.{js,json,md}" || true
-	@echo "✅ Code formatted" 
+	@echo "[OK] Code formatted" 
+
+# Setup GCS buckets for document RAG
+setup-gcs:
+	@echo "[OK] Setting up GCS buckets..."
+	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; \
+	./scripts/setup-gcs-buckets.sh $$PROJECT_ID
+
+# Upload sample documents to GCS
+upload-samples:
+	@echo "📤 Uploading sample documents..."
+	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; \
+	./scripts/upload-sample-docs.sh $$PROJECT_ID
+
+# Test document processing
+test-documents:
+	@echo "[OK] Testing document processing..."
+	@curl -X POST http://localhost:5002/api/process-documents
 
 # Monitor server logs
 monitor-server:
@@ -277,25 +299,25 @@ online-client:
 	@kubectl -n syncscribe rollout status deploy/syncscribe-client
 
 online-all: online-server online-client
-	@echo "🔄 Restoring external access (Service/Ingress)..."
+	@echo "[OK] Restoring external access (Service/Ingress)..."
 	@if [ -f .k8s-tmp/server.yaml ]; then echo "Applying .k8s-tmp/server.yaml"; kubectl -n syncscribe apply -f .k8s-tmp/server.yaml; else echo "Applying k8s/server.yaml"; kubectl -n syncscribe apply -f k8s/server.yaml; fi
 	@if [ -f .k8s-tmp/client.yaml ]; then echo "Applying .k8s-tmp/client.yaml"; kubectl -n syncscribe apply -f .k8s-tmp/client.yaml; else echo "Applying k8s/client.yaml"; kubectl -n syncscribe apply -f k8s/client.yaml; fi
 	@if [ -f k8s/managed-cert.yaml ]; then kubectl -n syncscribe apply -f k8s/managed-cert.yaml; else echo "Managed cert manifest not found (skipped)"; fi
 	@if [ -f k8s/ingress.yaml ]; then kubectl -n syncscribe apply -f k8s/ingress.yaml; else echo "Ingress manifest not found (skipped)"; fi
-	@echo "✅ Online completed. Current resources:"
+	@echo "[OK] Online completed. Current resources:"
 	@kubectl -n syncscribe get deploy,svc,ingress || true
 
 # Delete deployments to fully remove workloads from the cluster
 purge-all:
-	@echo "🗑️  Deleting deployments (syncscribe-client, syncscribe-server)..."
+	@echo "[OK] Deleting deployments (syncscribe-client, syncscribe-server)..."
 	@kubectl -n syncscribe delete deploy/syncscribe-client --ignore-not-found
 	@kubectl -n syncscribe delete deploy/syncscribe-server --ignore-not-found
-	@echo "✅ Purge complete. Remaining resources:"
+	@echo "[OK] Purge complete. Remaining resources:"
 	@kubectl -n syncscribe get deploy,svc,ingress || true
 
 # Fully purge namespace resources (services, ingresses, HPAs, configmaps, secrets, etc.) and the namespace itself
 purge-workloads:
-	@echo "🧨 Purging all resources in namespace 'syncscribe'..."
+	@echo "[OK] Purging all resources in namespace 'syncscribe'..."
 	@kubectl delete ingress --all -n syncscribe --ignore-not-found || true
 	@kubectl delete svc --all -n syncscribe --ignore-not-found || true
 	@kubectl delete deploy --all -n syncscribe --ignore-not-found || true
@@ -306,9 +328,9 @@ purge-workloads:
 	@kubectl delete secret --all -n syncscribe --ignore-not-found || true
 	@kubectl delete job --all -n syncscribe --ignore-not-found || true
 	@kubectl delete pod --all -n syncscribe --ignore-not-found || true
-	@echo "🗑️  Deleting namespace 'syncscribe'..."
+	@echo "[OK] Deleting namespace 'syncscribe'..."
 	@kubectl delete namespace syncscribe --ignore-not-found || true
-	@echo "✅ Namespace purge requested (deletion may take ~1-2 minutes)."
+	@echo "[OK] Namespace purge requested (deletion may take ~1-2 minutes)."
 
 # Best-effort cleanup of GCLB resources left by GCE Ingress (scoped by name containing 'syncscribe')
 purge-gclb:
@@ -322,56 +344,56 @@ purge-gclb:
 	 for um in $$(gcloud compute url-maps list --project $$PROJECT_ID --format='value(name)' | grep -E 'syncscribe|k8s2-' || true); do echo "Deleting url-map $$um"; gcloud compute url-maps delete $$um --quiet --project $$PROJECT_ID || true; done; \
 	 for hc in $$(gcloud compute health-checks list --project $$PROJECT_ID --format='value(name)' | grep -E 'syncscribe|k8s' || true); do echo "Deleting health-check $$hc"; gcloud compute health-checks delete $$hc --quiet --project $$PROJECT_ID || true; done; \
 	 for neg in $$(gcloud compute network-endpoint-groups list --zones $$ZONE --project $$PROJECT_ID --format='value(name)' | grep -E 'syncscribe|k8s1-' || true); do echo "Deleting NEG $$neg in $$ZONE"; gcloud compute network-endpoint-groups delete $$neg --zone $$ZONE --quiet --project $$PROJECT_ID || true; done; \
-	 echo "✅ GCLB cleanup attempted."
+	 echo "[OK] GCLB cleanup attempted."
 
 # Delete the entire GKE cluster (destructive)
 purge-cluster:
 	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; CLUSTER=$${CLUSTER:-gke-syncscribe}; ZONE=$${ZONE:-us-central1-a}; \
 	 echo "🔥 Deleting cluster '$$CLUSTER' in $$ZONE (project $$PROJECT_ID)..."; \
 	 gcloud container clusters delete "$$CLUSTER" --zone "$$ZONE" --project "$$PROJECT_ID" --quiet || true
-	@echo "✅ Cluster delete requested."
+	@echo "[OK] Cluster delete requested."
 
 # Run full cleanup sequence
 purge-everything: purge-workloads purge-gclb purge-cluster
-	@echo "🧯 Full cleanup sequence executed."
+	@echo "[OK] Full cleanup sequence executed."
 
 # Recreate cluster if missing, build uniquely tagged images, render manifests and bring online
 reset-online-all:
 	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; CLUSTER=$${CLUSTER:-gke-syncscribe}; ZONE=$${ZONE:-us-central1-a}; REGION=$${REGION:-us}; \
 	 echo "🔁 Resetting environment for $$PROJECT_ID (cluster=$$CLUSTER zone=$$ZONE)"; \
 	 if ! gcloud container clusters describe "$$CLUSTER" --zone "$$ZONE" --project "$$PROJECT_ID" >/dev/null 2>&1; then \
-	   echo "🌱 Creating cluster $$CLUSTER..."; \
+	   echo "[OK] Creating cluster $$CLUSTER..."; \
 	   gcloud container clusters create "$$CLUSTER" --zone "$$ZONE" --num-nodes=1 --project "$$PROJECT_ID"; \
 	 else \
-	   echo "🔗 Cluster exists."; \
+	   echo "[OK] Cluster exists."; \
 	 fi; \
 	 gcloud container clusters get-credentials "$$CLUSTER" --zone "$$ZONE" --project "$$PROJECT_ID"; \
 	 kubectl apply -f k8s/namespace.yaml; \
 	 kubectl apply -f k8s/secret.yaml || true; \
 	 # Reserve global static IP (idempotent) and compute nip.io domain \
 	 if ! gcloud compute addresses describe syncscribe-ip --global --project "$$PROJECT_ID" >/dev/null 2>&1; then \
-	   echo "🌐 Reserving global static IP 'syncscribe-ip'..."; \
+	   echo "[OK] Reserving global static IP 'syncscribe-ip'..."; \
 	   gcloud compute addresses create syncscribe-ip --global --project "$$PROJECT_ID"; \
 	 fi; \
 	 IP=$$(gcloud compute addresses describe syncscribe-ip --global --project "$$PROJECT_ID" --format='value(address)'); \
 	 DOMAIN=$$(echo $$IP | awk -F. '{printf "%s-%s-%s-%s.nip.io", $$1,$$2,$$3,$$4}'); \
-	 echo "🌍 Using domain $$DOMAIN"; \
+	 echo "[OK] Using domain $$DOMAIN"; \
 	 TAG=$$(git rev-parse --short HEAD)-$$(date +%s); \
-	 echo "🏷️  Building images with tag $$TAG..."; \
+	 echo "[OK] Building images with tag $$TAG..."; \
 	 gcloud builds submit --config cloudbuild.yaml \
 	   --substitutions _SERVER_IMAGE=us.gcr.io/$$PROJECT_ID/syncscribe-server:$$TAG,_CLIENT_IMAGE=us.gcr.io/$$PROJECT_ID/syncscribe-client:$$TAG .; \
-	 echo "📝 Rendering manifests to .k8s-tmp for tag $$TAG..."; \
+	 echo "[OK] Rendering manifests to .k8s-tmp for tag $$TAG..."; \
 	 mkdir -p .k8s-tmp; \
 	 sed "s|REPLACE_SERVER_IMAGE|us.gcr.io/$$PROJECT_ID/syncscribe-server:$$TAG|g" k8s/server.yaml > .k8s-tmp/server.yaml; \
 	 sed "s|REPLACE_CLIENT_IMAGE|us.gcr.io/$$PROJECT_ID/syncscribe-client:$$TAG|g" k8s/client.yaml > .k8s-tmp/client.yaml; \
 	 if [ -f k8s/managed-cert.yaml ]; then sed "s|REPLACE_DOMAIN|$$DOMAIN|g" k8s/managed-cert.yaml > .k8s-tmp/managed-cert.yaml; fi; \
 	 if [ -f k8s/ingress.yaml ]; then sed "s|REPLACE_DOMAIN|$$DOMAIN|g" k8s/ingress.yaml > .k8s-tmp/ingress.yaml; fi; \
-	 echo "🚚 Applying manifests..."; \
+	 echo "[OK] Applying manifests..."; \
 	 kubectl -n syncscribe apply -f .k8s-tmp/server.yaml; \
 	 kubectl -n syncscribe apply -f .k8s-tmp/client.yaml; \
 	 if [ -f .k8s-tmp/managed-cert.yaml ]; then kubectl -n syncscribe apply -f .k8s-tmp/managed-cert.yaml; fi; \
 	 if [ -f .k8s-tmp/ingress.yaml ]; then kubectl -n syncscribe apply -f .k8s-tmp/ingress.yaml; fi; \
-	 echo "⏳ Waiting for rollouts..."; \
+	 echo "[OK] Waiting for rollouts..."; \
 	 kubectl -n syncscribe rollout status deploy/syncscribe-server; \
 	 kubectl -n syncscribe rollout status deploy/syncscribe-client; \
 	 echo "--- External Endpoints ---"; \
@@ -382,22 +404,22 @@ reset-online-all:
 	 [ -z "$$LB_IP" ] && LB_IP=$$(kubectl -n syncscribe get svc syncscribe-client -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true); \
 	 LB_PORT=$$(kubectl -n syncscribe get svc syncscribe-client -o jsonpath='{.spec.ports[0].port}' 2>/dev/null || echo 80); \
 	 if [ -n "$$LB_IP" ]; then echo "LoadBalancer: $$LB_IP:$$LB_PORT"; echo "Browser URL: http://$$LB_IP/"; else echo "LoadBalancer: (pending)"; fi; \
-	 echo "🔐 HTTPS URL (once cert is ACTIVE): https://$$DOMAIN"; \
-	 echo "✅ reset-online-all completed for tag $$TAG."
+	 echo "[OK] HTTPS URL (once cert is ACTIVE): https://$$DOMAIN"; \
+	 echo "[OK] reset-online-all completed for tag $$TAG."
 
 # Build and push images with :latest via Cloud Build
 image:
-	@echo "🏷️  Building and pushing images (:latest) via Cloud Build..."
+	@echo "[OK] Building and pushing images (:latest) via Cloud Build..."
 	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; \
 	 echo "Using PROJECT_ID=$$PROJECT_ID"; \
 	 gcloud builds submit --config cloudbuild.yaml \
 	   --substitutions _SERVER_IMAGE=us.gcr.io/$$PROJECT_ID/syncscribe-server:latest,_CLIENT_IMAGE=us.gcr.io/$$PROJECT_ID/syncscribe-client:latest .
 	@$(MAKE) render-latest
-	@echo "✅ Images built and manifests rendered to .k8s-tmp/*.yaml (using :latest)"
+	@echo "[OK] Images built and manifests rendered to .k8s-tmp/*.yaml (using :latest)"
 
 # Render manifests pointing to :latest into .k8s-tmp
 render-latest:
-	@echo "📝 Rendering manifests to .k8s-tmp with :latest images..."
+	@echo "[OK] Rendering manifests to .k8s-tmp with :latest images..."
 	@PROJECT_ID=$${PROJECT_ID:-meeting-trans-443019}; \
 	 mkdir -p .k8s-tmp; \
 	 sed "s|REPLACE_SERVER_IMAGE|us.gcr.io/$$PROJECT_ID/syncscribe-server:latest|g" k8s/server.yaml > .k8s-tmp/server.yaml; \
@@ -406,12 +428,12 @@ render-latest:
 
 # Take workloads offline (replicas = 0)
 offline-server:
-	@echo "🛑 Scaling server to 0 replicas..."
+	@echo "[OK] Scaling server to 0 replicas..."
 	@kubectl -n syncscribe scale deploy/syncscribe-server --replicas=0
 	@kubectl -n syncscribe get deploy/syncscribe-server
 
 offline-client:
-	@echo "🛑 Scaling client to 0 replicas..."
+	@echo "[OK] Scaling client to 0 replicas..."
 	@kubectl -n syncscribe scale deploy/syncscribe-client --replicas=0
 	@kubectl -n syncscribe get deploy/syncscribe-client
 
@@ -419,5 +441,5 @@ offline-all: offline-client offline-server
 	@echo "🧹 Removing external access (Service/Ingress)..."
 	@kubectl -n syncscribe get svc syncscribe-client >/dev/null 2>&1 && kubectl -n syncscribe delete svc syncscribe-client || echo "Service syncscribe-client not found (skipped)"
 	@kubectl -n syncscribe get ingress syncscribe-client >/dev/null 2>&1 && kubectl -n syncscribe delete ingress syncscribe-client || echo "Ingress syncscribe-client not found (skipped)"
-	@echo "✅ Offline completed. Remaining resources:"
+	@echo "[OK] Offline completed. Remaining resources:"
 	@kubectl -n syncscribe get deploy,svc,ingress || true

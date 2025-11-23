@@ -11,7 +11,7 @@ describe('AI Analysis Integration Tests', () => {
   before(function() {
     // Skip tests if API keys are not available
     if (!process.env.OPENAI_API_KEY) {
-      console.warn('⚠️  Skipping AI Analysis tests: OPENAI_API_KEY not found');
+      console.warn('[X] Skipping AI Analysis tests: OPENAI_API_KEY not found');
       this.skip();
       return;
     }

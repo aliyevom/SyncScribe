@@ -14,6 +14,7 @@ const {
 const { createDeepgramStream, processAudioData } = require('./services/deepgramService');
 const { teamKnowledge } = require('./services/teamKnowledge');
 const { tagService } = require('./services/tagService');
+const documentService = require('./services/documentService');
 
 const app = express();
 const server = http.createServer(app);
@@ -30,6 +31,26 @@ app.use(express.json());
 
 // Simple health check for k8s probes
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+
+// Document service health endpoint
+app.get('/api/document-health', (_req, res) => {
+  try {
+    const health = documentService.getHealthStatus();
+    res.json(health);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Manual document processing trigger
+app.post('/api/process-documents', async (_req, res) => {
+  try {
+    const result = await documentService.processAllDocuments();
+    res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Store active sessions
 const activeSessions = new Map();
@@ -355,7 +376,8 @@ const analyzeWithAgent = async (text, roomId, agent = AI_AGENTS.MEETING_ANALYST,
                 projectsMentioned: new Set(),
                 decisions: [],
                 actionItems: [],
-                tags: new Set()
+                tags: new Set(),
+                selectedBucket: null // 'n1', 'u1', or null for both
             });
         }
         
@@ -377,8 +399,57 @@ const analyzeWithAgent = async (text, roomId, agent = AI_AGENTS.MEETING_ANALYST,
         contextAnalysis.entities.projects.forEach(p => roomContext.projectsMentioned.add(p));
         contextAnalysis.entities.technologies.forEach(t => roomContext.topics.add(t));
         
+        // SEARCH DOCUMENT KNOWLEDGE BASE
+        let documentContext = null;
+        let relevantDocs = [];
+        try {
+            // Determine bucket filter based on room context
+            let bucketFilter = null;
+            if (roomContext.selectedBucket === 'n1') {
+                bucketFilter = process.env.GCS_BUCKET_N1 || 'syncscribe-n1';
+            } else if (roomContext.selectedBucket === 'u1') {
+                bucketFilter = process.env.GCS_BUCKET_U1 || 'syncscribe-u1';
+            }
+            // If null, search both buckets (no filter)
+            
+            // Search for relevant documents based on current conversation
+            relevantDocs = await documentService.searchDocuments(text, 5, bucketFilter);
+            
+            if (relevantDocs && relevantDocs.length > 0) {
+                documentContext = {
+                    found: true,
+                    count: relevantDocs.length,
+                    sources: relevantDocs.map(doc => ({
+                        filename: doc.metadata.filename,
+                        bucket: doc.metadata.bucket,
+                        similarity: (doc.similarity * 100).toFixed(1)
+                    })),
+                    content: relevantDocs.map((doc, idx) => 
+                        `[Document ${idx + 1}: ${doc.metadata.filename} (${(doc.similarity * 100).toFixed(1)}% match)]\n${doc.text}`
+                    ).join('\n\n')
+                };
+                
+                console.log(`[OK] Found ${relevantDocs.length} relevant documents for analysis`);
+            }
+        } catch (error) {
+            console.warn('Document search failed:', error.message);
+        }
+        
         // Build enhanced prompt with team context and tags
         let enhancedPrompt = agent.systemPrompt + '\n\n';
+        
+        // ADD DOCUMENT CONTEXT AS PRIMARY SOURCE
+        if (documentContext && documentContext.found) {
+            enhancedPrompt += 'DOCUMENT CONTEXT (PRIMARY SOURCE OF TRUTH):\n';
+            enhancedPrompt += '='.repeat(80) + '\n';
+            enhancedPrompt += 'The following information comes from your organization\'s official documentation.\n';
+            enhancedPrompt += 'USE THIS AS YOUR PRIMARY SOURCE when answering questions related to these topics.\n';
+            enhancedPrompt += 'If the current discussion is DIRECTLY RELATED to the document content below, cite and explain based on these documents.\n';
+            enhancedPrompt += 'If the discussion is NOT related to these documents, provide analysis as usual.\n\n';
+            enhancedPrompt += documentContext.content + '\n';
+            enhancedPrompt += '='.repeat(80) + '\n\n';
+        }
+        
         enhancedPrompt += 'Team Context:\n' + contextAnalysis.context + '\n\n';
         
         // Add tag context if present
@@ -430,16 +501,38 @@ Do not include any extra commentary or markdown; JSON only.`;
         });
 
         let analysisHtml;
+        let analysisText = '';
         try {
             const json = JSON.parse(completion.choices[0].message.content || '{}');
             analysisHtml = formatStructuredResponse(json, agent.name);
+            analysisText = completion.choices[0].message.content || '';
         } catch (_) {
             const fallbackText = completion.choices[0].message.content || '';
             analysisHtml = formatAIResponse(fallbackText, agent.name);
+            analysisText = fallbackText;
+        }
+        
+        // ADD DOCUMENT ATTRIBUTION IF USED
+        if (documentContext && documentContext.found) {
+            const docBadge = `<div class="document-enhanced-badge">
+                <span class="badge-icon">[OK]</span>
+                <span class="badge-text">Document Enhanced</span>
+                <div class="document-sources">
+                    ${documentContext.sources.map(src => 
+                        `<div class="doc-source">
+                            <span class="doc-name">${src.filename}</span>
+                            <span class="doc-similarity">${src.similarity}% match</span>
+                        </div>`
+                    ).join('')}
+                </div>
+            </div>`;
+            
+            analysisHtml = analysisHtml.replace('<div class="ai-analysis">', 
+                `<div class="ai-analysis document-enhanced">${docBadge}`);
         }
         
         // Extract and store action items and decisions
-        const actionItemMatches = analysis.matchAll(/(?:action item|todo|task):\s*([^.]+)/gi);
+        const actionItemMatches = analysisText.matchAll(/(?:action item|todo|task):\s*([^.]+)/gi);
         for (const match of actionItemMatches) {
             roomContext.actionItems.push({
                 text: match[1].trim(),
@@ -495,7 +588,7 @@ Do not include any extra commentary or markdown; JSON only.`;
 };
 
 // Speech-style single-paragraph reply using recent history for flow
-const analyzeSpokenReply = async (text, roomId, agent = AI_AGENTS.SPOKEN_RESPONDER, recentHistory = [], lensName) => {
+const analyzeSpokenReply = async (text, roomId, agent = AI_AGENTS.SPOKEN_RESPONDER, recentHistory = [], lensName, useRAG = false) => {
     try {
         if (!roomContexts.has(roomId)) {
             roomContexts.set(roomId, {
@@ -505,42 +598,145 @@ const analyzeSpokenReply = async (text, roomId, agent = AI_AGENTS.SPOKEN_RESPOND
                 projectsMentioned: new Set(),
                 decisions: [],
                 actionItems: [],
-                tags: new Set()
+                tags: new Set(),
+                selectedBucket: null
             });
         }
 
+        const roomContext = roomContexts.get(roomId);
         const contextAnalysis = teamKnowledge.buildContextPrompt(text);
         const tagContext = tagService.buildTagContext(tagService.getAllTags(text));
+
+        // SEARCH DOCUMENT KNOWLEDGE BASE (only if useRAG is true)
+        let documentContext = null;
+        let ragUsed = false;
+        let ragSources = [];
+        
+        if (useRAG) {
+            try {
+                // Determine bucket filter based on room context
+                let bucketFilter = null;
+                console.log(`[analyzeSpokenReply] Room context selectedBucket: ${roomContext?.selectedBucket || 'null'}`);
+                if (roomContext && roomContext.selectedBucket === 'n1') {
+                    bucketFilter = process.env.GCS_BUCKET_N1 || 'syncscribe-n1';
+                    console.log(`[OK] Searching N-1 bucket only: ${bucketFilter}`);
+                } else if (roomContext && roomContext.selectedBucket === 'u1') {
+                    bucketFilter = process.env.GCS_BUCKET_U1 || 'syncscribe-u1';
+                    console.log(`[OK] Searching U-1 bucket only: ${bucketFilter}`);
+                } else {
+                    bucketFilter = null;
+                    console.log(`[OK] Searching both buckets (no filter)`);
+                }
+                
+                // Search for relevant documents
+                console.log(`Calling documentService.searchDocuments() with bucketFilter: ${bucketFilter || 'null'}`);
+                const relevantDocs = await documentService.searchDocuments(text, 3, bucketFilter);
+                console.log(`[OK] Search returned ${relevantDocs?.length || 0} documents`);
+                if (relevantDocs && relevantDocs.length > 0) {
+                    console.log(`Document buckets found: ${relevantDocs.map(d => d.metadata?.bucket).join(', ')}`);
+                }
+                
+                if (relevantDocs && relevantDocs.length > 0) {
+                    ragUsed = true;
+                    ragSources = relevantDocs.map(doc => ({
+                        filename: doc.metadata.filename,
+                        bucket: doc.metadata.bucket,
+                        similarity: (doc.similarity * 100).toFixed(1)
+                    }));
+                    
+                    documentContext = {
+                        found: true,
+                        count: relevantDocs.length,
+                        sources: ragSources,
+                        content: relevantDocs.map((doc, idx) => 
+                            `[Reference ${idx + 1}: ${doc.metadata.filename} (${(doc.similarity * 100).toFixed(1)}% match)]\n${doc.text}`
+                        ).join('\n\n')
+                    };
+                    
+                    console.log(`[OK] Found ${relevantDocs.length} relevant documents`);
+                    console.log(`Sources: ${ragSources.map(s => `${s.filename} (${s.similarity}%)`).join(', ')}`);
+                } else {
+                    console.log(`No relevant documents found`);
+                    console.log(`      Similarity threshold: ${(documentService.minSimilarity * 100).toFixed(1)}%`);
+                    console.log(`      Search query length: ${text.length} chars`);
+                }
+            } catch (error) {
+                console.warn(`[X] Document search failed: ${error.message}`);
+            }
+        } else {
+                console.log(`[OK] Skipping document search (useRAG=false)`);
+        }
 
         const recentContext = recentHistory && recentHistory.length
             ? `Recent context (most recent first):\n${recentHistory.map((t,i)=>`[${i+1}] ${t}`).join('\n')}\n\n`
             : '';
 
-        const system = `${agent.systemPrompt}\nLength: 600-900 words. ${lensName ? `Write with the lens of a ${lensName}, but keep a single flowing paragraph without bullets or headings.` : ''}`;
-        const user = `${recentContext}${tagContext ? `Tag hints:\n${tagContext}\n\n` : ''}Write a single-paragraph spoken response to this segment, continuing naturally from the context. Avoid headings, lists, or formatting.\nSegment:\n${text}`;
+        // Build system prompt
+        let systemPrompt = `${agent.systemPrompt}\nLength: 600-900 words. ${lensName ? `Write with the lens of a ${lensName}, but keep a single flowing paragraph without bullets or headings.` : ''}`;
+        
+        // Add document context if found and useRAG is true
+        if (useRAG && documentContext && documentContext.found) {
+            systemPrompt += `\n\nDOCUMENT REFERENCES AVAILABLE:\nYou have access to relevant documentation from the organization's knowledge base. When the conversation relates to these documents, incorporate specific details and facts from them naturally into your response. Use these as authoritative references when relevant. If the conversation is NOT related to these documents, provide analysis as usual without forcing connections.\n\nIMPORTANT TAGGING INSTRUCTION:\nWhen you use information directly from the document references, wrap those specific sentences with [RAG_START] and [RAG_END] tags. Only tag complete sentences that are directly based on the document content. Do not tag general knowledge or your own analysis.\n\nExample:\n- General analysis here. [RAG_START]This specific practice is outlined in our documentation.[RAG_END] More general analysis.\n\nDocument Content:\n${documentContext.content}`;
+        }
 
-        const run = async (settings) => openai.chat.completions.create({
+        const userPrompt = `${recentContext}${tagContext ? `Tag hints:\n${tagContext}\n\n` : ''}Write a single-paragraph spoken response to this segment, continuing naturally from the context. Avoid headings, lists, or formatting.${useRAG && documentContext && documentContext.found ? ' When relevant, incorporate specific details from the provided document references.' : ''}\nSegment:\n${text}`;
+
+        const run = async (settings) => {
+            console.log(`[OK] Calling OpenAI API (model: ${settings.model || agent.settings.model})...`);
+            const startTime = Date.now();
+            const result = await openai.chat.completions.create({
             ...settings,
-            messages: [ { role: 'system', content: system }, { role: 'user', content: user } ]
+                messages: [ 
+                    { role: 'system', content: systemPrompt }, 
+                    { role: 'user', content: userPrompt } 
+                ]
         });
+            const duration = Date.now() - startTime;
+            console.log(`[OK] OpenAI API call completed in ${duration}ms`);
+            return result;
+        };
 
         let completion;
         try {
             completion = await run(agent.settings);
         } catch (e1) {
+            console.warn(`[X] Primary model failed, retrying with fallback...`);
             // Retry once with safer defaults
             try {
                 const safer = { model: 'gpt-4o-mini', temperature: 0.6, max_tokens: 1600 };
                 completion = await run(safer);
             } catch (e2) {
+                console.error(`[X] Fallback model also failed: ${e2.message}`);
                 throw e2;
             }
         }
 
         const raw = (completion.choices?.[0]?.message?.content || '').replace(/\n+/g, ' ').trim();
-        return { analysis: cleanParagraph(raw), agent: agent.name, isFallback: false };
+        
+        // Extract tags
+        const detectedTags = tagService.getAllTags(text);
+        detectedTags.forEach(tag => roomContext.tags.add(tag));
+        
+        return { 
+            analysis: cleanParagraph(raw), 
+            agent: agent.name, 
+            isFallback: false,
+            ragUsed: ragUsed,
+            ragSources: ragSources,
+            ragTag: ragUsed ? '+RAG' : null,
+            tags: Array.from(roomContext.tags),
+            tagMetadata: Array.from(roomContext.tags).map(tag => tagService.getTagMetadata(tag)),
+            roomContext: {
+                meetingType: roomContext.meetingType,
+                participants: Array.from(roomContext.participants),
+                topics: Array.from(roomContext.topics),
+                actionItems: roomContext.actionItems.slice(-5),
+                tags: Array.from(roomContext.tags)
+            }
+        };
     } catch (error) {
-        console.error('Error with spoken reply agent:', error);
+        console.error('[X] Error with spoken reply agent:', error);
+        console.error('   Stack:', error.stack);
         throw error;
     }
 };
@@ -748,36 +944,135 @@ io.on('connection', (socket) => {
   });
 
   socket.on('process_with_ai', async (data) => {
+    // Explicitly handle useRAG to avoid default value issues
+    const useRAG = data.useRAG === true || data.useRAG === 'true' || data.useRAG === 1;
     const { text, roomId, agentType = 'MEETING_ANALYST', blockId } = data;
+    
+    // Use socket ID as fallback if roomId is empty
+    const effectiveRoomId = roomId || socket.id;
+    
+    // Log received data for debugging
+    console.log(`\n[SERVER] Received process_with_ai request:`);
+    console.log(`   Raw useRAG parameter: ${data.useRAG} (type: ${typeof data.useRAG})`);
+    console.log(`   Processed useRAG: ${useRAG} (type: ${typeof useRAG})`);
+    console.log(`   roomId from data: ${roomId || 'EMPTY!'}`);
+    console.log(`   socket.id: ${socket.id}`);
+    console.log(`   effectiveRoomId: ${effectiveRoomId}`);
     
     try {
         const agent = AI_AGENTS[agentType] || AI_AGENTS.MEETING_ANALYST;
-        // Maintain rolling history per room
-        if (!transcriptsByRoom.has(roomId)) transcriptsByRoom.set(roomId, []);
-        const roomTranscripts = transcriptsByRoom.get(roomId);
+        // Maintain rolling history per room (use effectiveRoomId)
+        if (!transcriptsByRoom.has(effectiveRoomId)) transcriptsByRoom.set(effectiveRoomId, []);
+        const roomTranscripts = transcriptsByRoom.get(effectiveRoomId);
         roomTranscripts.push({ text, ts: Date.now(), blockId });
         // Keep last 20 blocks for context
         if (roomTranscripts.length > 20) roomTranscripts.splice(0, roomTranscripts.length - 20);
         const recent = roomTranscripts.slice(-4, -0).reverse().map(t => t.text).slice(0, 3);
 
-        // Force essay/speech output for all selected agents by routing to spoken responder
-        const result = await analyzeSpokenReply(text, roomId, AI_AGENTS.SPOKEN_RESPONDER, recent, agent.name);
+        console.log(`\n[${new Date().toISOString()}] Starting AI analysis for block ${blockId}`);
+        console.log(`   Text length: ${text.length} chars`);
+        console.log(`   Agent: ${agent.name}`);
+        console.log(`   Recent history: ${recent.length} blocks`);
+        console.log(`   Analysis mode: ${useRAG ? 'Document-Enhanced (RAG)' : 'Original (Standard)'}`);
+
+        // Ensure room context exists (use effectiveRoomId)
+        if (!roomContexts.has(effectiveRoomId)) {
+          roomContexts.set(effectiveRoomId, {
+            meetingType: null,
+            participants: new Set(),
+            topics: new Set(),
+            projectsMentioned: new Set(),
+            decisions: [],
+            actionItems: [],
+            tags: new Set(),
+            selectedBucket: null
+          });
+        }
         
+        // Get room context for bucket filtering (use effectiveRoomId)
+        const roomContext = roomContexts.get(effectiveRoomId);
+        console.log(`Room context bucket selection: ${roomContext?.selectedBucket || 'null'} (roomId: ${effectiveRoomId})`);
+        const bucketInfo = roomContext?.selectedBucket ? ` (bucket: ${roomContext.selectedBucket})` : ' (all buckets)';
+        console.log(`Bucket info:${bucketInfo}`);
+        
+        if (useRAG) {
+            // STEP: Generate Document-Enhanced analysis (with RAG)
+            console.log(`[OK] Generating document-enhanced analysis...`);
+            console.log(`RAG search config:${bucketInfo}`);
+            
+            const ragResult = await analyzeSpokenReply(text, effectiveRoomId, AI_AGENTS.SPOKEN_RESPONDER, recent, agent.name, true);
+            
+            console.log(`[OK] RAG search result: ragUsed=${ragResult.ragUsed}, sources=${ragResult.ragSources.length}`);
+            
+            if (ragResult.ragUsed && ragResult.ragSources.length > 0) {
+                console.log(`[OK] Document-enhanced analysis generated (${ragResult.analysis.length} chars)`);
+                console.log(`Sources used: ${ragResult.ragSources.map(s => `${s.filename} (${s.similarity}%)`).join(', ')}`);
+                
+                // Send document-enhanced analysis
+                socket.emit('ai_response', { 
+                    text: ragResult.analysis,
+                    context: text,
+                    timestamp: new Date().toISOString(),
+                    analysisType: 'document-enhanced',
+                    agent: ragResult.agent,
+                    roomContext: ragResult.roomContext,
+                    tags: ragResult.tags,
+                    tagMetadata: ragResult.tagMetadata,
+                    isFormatted: false,
+                    isFallback: ragResult.isFallback,
+                    blockId,
+                    ragUsed: true,
+                    ragSources: ragResult.ragSources,
+                    ragTag: '+RAG'
+                });
+            } else {
+                console.log(`[X] No relevant documents found`);
+                // Send fallback message when RAG is requested but no documents found
+                socket.emit('ai_response', {
+                    text: 'No relevant documents found in the knowledge base for this conversation segment.',
+                    context: text,
+                    timestamp: new Date().toISOString(),
+                    analysisType: 'document-enhanced',
+                    agent: agent.name,
+                    isFormatted: false,
+                    isFallback: true,
+                    blockId,
+                    ragUsed: false,
+                    ragSources: [],
+                    ragTag: null
+                });
+            }
+        } else {
+            // STEP: Generate ORIGINAL analysis (without RAG)
+            console.log(`[OK] Generating original analysis (without RAG)...`);
+            const originalResult = await analyzeSpokenReply(text, effectiveRoomId, AI_AGENTS.SPOKEN_RESPONDER, recent, agent.name, false);
+            
+            console.log(`[OK] Original analysis generated (${originalResult.analysis.length} chars)`);
+            
+            // Send original analysis
             socket.emit('ai_response', { 
-            text: result.analysis,
-            context: text,
+                text: originalResult.analysis,
+                context: text,
                 timestamp: new Date().toISOString(),
-            analysisType: 'enhanced',
-            agent: result.agent,
-            roomContext: result.roomContext,
-            tags: result.tags,
-            tagMetadata: result.tagMetadata,
-            isFormatted: false,
-            isFallback: result.isFallback,
-            blockId
-        });
+                analysisType: 'original',
+                agent: originalResult.agent,
+                roomContext: originalResult.roomContext,
+                tags: originalResult.tags,
+                tagMetadata: originalResult.tagMetadata,
+                isFormatted: false,
+                isFallback: originalResult.isFallback,
+                blockId,
+                ragUsed: false,
+                ragSources: [],
+                ragTag: null
+            });
+        }
+        
+        console.log(`[OK] Analysis complete for block ${blockId}\n`);
+        
         } catch (error) {
-        console.error('Error with AI processing:', error);
+        console.error('[X] Error with AI processing:', error);
+        console.error('   Stack:', error.stack);
         
         // Send plain single-paragraph fallback (no bullets/headings)
         const sanitized = (text || '')
@@ -792,7 +1087,12 @@ io.on('connection', (socket) => {
           text: paragraph,
           isError: true,
           isFormatted: false,
-          agent: 'System'
+          agent: 'System',
+          analysisType: 'error',
+          ragUsed: false,
+          ragSources: [],
+          ragTag: null,
+          timestamp: new Date().toISOString()
         });
     }
   });
@@ -818,6 +1118,38 @@ io.on('connection', (socket) => {
     const { roomId, agentType } = data;
     console.log(`Switching to ${agentType} agent for room ${roomId}`);
     socket.emit('agent_switched', { agentType });
+  });
+
+  // Add endpoint to select document bucket for RAG
+  socket.on('select_document_bucket', (data) => {
+    const { roomId, bucket } = data; // bucket: 'n1', 'u1', or null for both
+    
+    // Use socket ID as fallback if roomId is empty
+    const effectiveRoomId = roomId || socket.id;
+    console.log(`[SERVER] Received select_document_bucket: bucket=${bucket}, roomId=${roomId || 'empty'}, effectiveRoomId=${effectiveRoomId}`);
+    
+    if (!roomContexts.has(effectiveRoomId)) {
+      roomContexts.set(effectiveRoomId, {
+        meetingType: null,
+        participants: new Set(),
+        topics: new Set(),
+        projectsMentioned: new Set(),
+        decisions: [],
+        actionItems: [],
+        tags: new Set(),
+        selectedBucket: null
+      });
+    }
+    const roomContext = roomContexts.get(effectiveRoomId);
+    roomContext.selectedBucket = bucket;
+    const bucketName = bucket === 'n1' 
+      ? (process.env.GCS_BUCKET_N1 || 'syncscribe-n1')
+      : bucket === 'u1'
+      ? (process.env.GCS_BUCKET_U1 || 'syncscribe-u1')
+      : 'both';
+    console.log(`[OK] Document bucket set to ${bucketName} (${bucket || 'both'}) for room ${effectiveRoomId}`);
+    console.log(`Room context now has selectedBucket: ${roomContext.selectedBucket}`);
+    socket.emit('bucket_selected', { bucket, roomId: effectiveRoomId });
   });
 
   // Add endpoint to manage tags
