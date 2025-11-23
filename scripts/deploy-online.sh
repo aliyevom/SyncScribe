@@ -236,9 +236,10 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                         cd client &&
                         git fetch origin 2>&1 || true &&
                         git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
-                            echo '[X] Failed to checkout expected commit, trying feature/RAG-UI branch...'
-                            git fetch origin feature/RAG-UI 2>&1 || true &&
-                            git checkout feature/RAG-UI 2>&1 || git checkout master 2>&1 || true
+                            echo '[X] Failed to checkout expected commit, updating to latest master...'
+                            git fetch origin master 2>&1 || true &&
+                            git checkout master 2>&1 || true &&
+                            git pull origin master 2>&1 || true
                         } &&
                         cd ..
                     fi
@@ -249,10 +250,11 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                     echo 'Current client submodule commit: '$CURRENT_CLIENT_COMMIT &&
                     if [ "$CURRENT_CLIENT_COMMIT" != "$EXPECTED_CLIENT_COMMIT" ]; then
                         echo '[X] Client submodule commit mismatch! Expected: '$EXPECTED_CLIENT_COMMIT', Got: '$CURRENT_CLIENT_COMMIT
-                        echo 'Attempting to fix...' &&
+                        echo 'Attempting to fix by updating to latest master...' &&
                         cd client &&
-                        git fetch origin 2>&1 || true &&
-                        git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || true &&
+                        git fetch origin master 2>&1 || true &&
+                        git checkout master 2>&1 || true &&
+                        git pull origin master 2>&1 || true &&
                         cd ..
                     else
                         echo '[OK] Client submodule is at correct commit'
