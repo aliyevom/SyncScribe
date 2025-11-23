@@ -301,11 +301,31 @@ jobs:
               echo '[OK] Repository cloned'
             else
               echo 'Updating SyncScribe repository to main branch...' &&
-              git fetch origin main &&
-              git clean -fd &&
-              git reset --hard origin/main &&
-              git checkout -B main origin/main &&
-              echo '[OK] Repository updated to main'
+              # Ensure remote is configured
+              git remote set-url origin https://github.com/$GITHUB_REPOSITORY.git 2>/dev/null || true &&
+              # Fetch latest from remote (force update refs)
+              git fetch origin +refs/heads/main:refs/remotes/origin/main 2>/dev/null || git fetch origin main:main 2>/dev/null || git fetch origin main &&
+              # Get the latest commit SHA directly from remote (most reliable)
+              LATEST_COMMIT=\$(git ls-remote origin refs/heads/main | cut -f1) &&
+              if [ -n \"\$LATEST_COMMIT\" ]; then
+                echo 'Latest commit on origin/main: '\$LATEST_COMMIT &&
+                # Clean working directory
+                git clean -fd &&
+                # Reset to the specific commit (works even if origin/main ref doesn't exist)
+                git reset --hard \"\$LATEST_COMMIT\" &&
+                # Ensure we're on main branch
+                git checkout -B main \"\$LATEST_COMMIT\" &&
+                # Update remote tracking
+                git branch --set-upstream-to=origin/main main 2>/dev/null || true &&
+                echo '[OK] Repository updated to main (commit: '\$LATEST_COMMIT')'
+              else
+                # Fallback: clean first, then fetch and reset
+                git clean -fd &&
+                git fetch origin main &&
+                git reset --hard origin/main &&
+                git checkout -B main origin/main &&
+                echo '[OK] Repository updated to main'
+              fi
             fi &&
             
             # Update client submodule to master branch
@@ -314,12 +334,29 @@ jobs:
               git submodule sync --recursive &&
               git submodule update --init --recursive --depth 1 &&
               cd client &&
-              git fetch origin master &&
-              git clean -fd &&
-              git reset --hard origin/master &&
-              git checkout -B master origin/master &&
+              # Ensure remote is configured
+              git remote set-url origin https://github.com/aliyevom/Sync-client.git 2>/dev/null || true &&
+              # Fetch latest from remote
+              git fetch origin +refs/heads/master:refs/remotes/origin/master 2>/dev/null || git fetch origin master:master 2>/dev/null || git fetch origin master &&
+              # Get latest commit SHA directly from remote
+              LATEST_CLIENT_COMMIT=\$(git ls-remote origin refs/heads/master | cut -f1) &&
+              if [ -n \"\$LATEST_CLIENT_COMMIT\" ]; then
+                echo 'Latest client commit on origin/master: '\$LATEST_CLIENT_COMMIT &&
+                git clean -fd &&
+                git reset --hard \"\$LATEST_CLIENT_COMMIT\" &&
+                git checkout -B master \"\$LATEST_CLIENT_COMMIT\" &&
+                git branch --set-upstream-to=origin/master master 2>/dev/null || true &&
+                echo '[OK] Client submodule updated to master (commit: '\$LATEST_CLIENT_COMMIT')'
+              else
+                # Fallback
+                git clean -fd &&
+                git fetch origin master &&
+                git reset --hard origin/master &&
+                git checkout -B master origin/master &&
+                echo '[OK] Client submodule updated to master'
+              fi &&
               cd .. &&
-              echo '[OK] Client submodule updated to master'
+              echo '[OK] Client submodule update complete'
             fi &&
             
             # Restore or create .env file
