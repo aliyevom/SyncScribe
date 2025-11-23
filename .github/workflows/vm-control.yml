@@ -377,6 +377,28 @@ jobs:
             echo "[X] Deployment failed"
             exit 1
           }
+          
+          # Step 5: Verify services are running
+          echo ""
+          echo "Step 5: Verifying services..."
+          sleep 15
+          gcloud compute ssh "$VM_NAME" $SSH_OPTS --project="$GCP_PROJECT_ID" --command "
+            cd ~/meeting-transcriber &&
+            echo '=== Service Status ===' &&
+            sudo docker-compose ps &&
+            echo '' &&
+            echo '=== Health Checks ===' &&
+            echo 'Server health:' &&
+            curl -s http://localhost:5002/healthz && echo '' || echo 'Server not responding' &&
+            echo '' &&
+            echo 'Client (main page):' &&
+            curl -s -I http://localhost:80 | head -3 || echo 'Client not responding'
+          " || echo "[X] Service verification failed"
+          
+          echo ""
+          echo "======================================"
+          echo "  Deployment Complete!"
+          echo "======================================"
 
       - name: Show VM status
         if: always()
