@@ -237,8 +237,16 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 # Sync submodule URLs first
                 git submodule sync --recursive 2>&1 || true &&
                 # Get the expected submodule commit from parent repo
-                EXPECTED_CLIENT_COMMIT=$(git ls-tree HEAD client 2>&1 | awk '{print $3}' | head -1 | tr -d '[:space:]' | grep -E '^[a-f0-9]{40}$' || echo '') &&
-                if [ -n "${EXPECTED_CLIENT_COMMIT:-}" ] && [ "${EXPECTED_CLIENT_COMMIT}" != "client" ]; then
+                LS_TREE_OUTPUT=$(git ls-tree HEAD client 2>&1) &&
+                EXPECTED_CLIENT_COMMIT=$(echo "$LS_TREE_OUTPUT" | awk '{print $3}' | head -1 | tr -d '[:space:]') &&
+                # Validate it's a commit hash (40 char hex)
+                if echo "$EXPECTED_CLIENT_COMMIT" | grep -qE '^[a-f0-9]{40}$'; then
+                    echo 'Expected client submodule commit: '$EXPECTED_CLIENT_COMMIT
+                else
+                    echo '[X] Invalid or missing client submodule commit. Output was: ['"$LS_TREE_OUTPUT"']' &&
+                    EXPECTED_CLIENT_COMMIT=''
+                fi &&
+                if [ -n "${EXPECTED_CLIENT_COMMIT}" ]; then
                     echo 'Expected client submodule commit: '$EXPECTED_CLIENT_COMMIT &&
                     # Update submodule to the expected commit
                     git submodule update --init --recursive --depth 1 2>&1 || {
