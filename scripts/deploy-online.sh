@@ -248,7 +248,6 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                     EXPECTED_CLIENT_COMMIT=''
                 fi &&
                 if [ -n "${EXPECTED_CLIENT_COMMIT}" ]; then
-                    echo 'Expected client submodule commit: '$EXPECTED_CLIENT_COMMIT &&
                     # Update submodule to the expected commit
                     git submodule update --init --recursive --depth 1 2>&1 || {
                         echo '[X] Standard submodule update failed, trying alternative method...'
