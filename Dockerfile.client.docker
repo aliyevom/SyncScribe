@@ -17,8 +17,9 @@ RUN npm install --legacy-peer-deps
 COPY client/ ./
 
 # Generate build version and timestamp
-ARG BUILD_VERSION=dev-$(date +%Y%m%d-%H%M%S)
-ARG BUILD_TIMESTAMP=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+# Note: Defaults are placeholders - should be passed as build args
+ARG BUILD_VERSION=unknown
+ARG BUILD_TIMESTAMP=unknown
 ENV BUILD_VERSION=$BUILD_VERSION
 ENV BUILD_TIMESTAMP=$BUILD_TIMESTAMP
 

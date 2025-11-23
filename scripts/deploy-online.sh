@@ -437,8 +437,13 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     
     # Rebuild and start services
     echo "Building services..." &&
+    # Generate build version and timestamp
+    BUILD_VERSION="deploy-online-$(date +%Y%m%d-%H%M%S)"
+    BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     # Pass build arguments explicitly
     if ! sudo docker-compose build --no-cache \
+        --build-arg BUILD_VERSION="${BUILD_VERSION}" \
+        --build-arg BUILD_TIMESTAMP="${BUILD_TIMESTAMP}" \
         --build-arg REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL}" \
         --build-arg REACT_APP_RAG_PASSWORD="${REACT_APP_RAG_PASSWORD}"; then
         echo "[X] Build failed, trying without build args..."

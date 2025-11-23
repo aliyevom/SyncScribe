@@ -345,8 +345,13 @@ jobs:
             
             # Build and start containers
             set -a && [ -f .env ] && source .env && set +a &&
+            # Generate build version and timestamp
+            BUILD_VERSION=\"deploy-latest-\$(date +%Y%m%d-%H%M%S)\" &&
+            BUILD_TIMESTAMP=\"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" &&
             sudo docker-compose down 2>/dev/null || true &&
             sudo docker-compose build --no-cache \
+              --build-arg BUILD_VERSION=\"\$BUILD_VERSION\" \
+              --build-arg BUILD_TIMESTAMP=\"\$BUILD_TIMESTAMP\" \
               --build-arg REACT_APP_SERVER_URL=\"\${REACT_APP_SERVER_URL}\" \
               --build-arg REACT_APP_RAG_PASSWORD=\"\${REACT_APP_RAG_PASSWORD}\" &&
             sudo docker-compose up -d &&
