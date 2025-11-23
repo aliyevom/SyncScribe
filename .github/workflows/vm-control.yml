@@ -38,6 +38,7 @@ on:
         required: true
         type: choice
         options:
+          - deploy-offline
           - deploy-online
           - deploy-latest
         default: deploy-online
@@ -300,31 +301,10 @@ jobs:
               echo '[OK] Repository cloned'
             else
               echo 'Updating SyncScribe repository to main branch...' &&
-              # Ensure remote is configured
-              git remote set-url origin https://github.com/$GITHUB_REPOSITORY.git 2>/dev/null || true &&
-              # Fetch latest from remote (force update refs)
-              git fetch origin +refs/heads/main:refs/remotes/origin/main 2>/dev/null || git fetch origin main:main 2>/dev/null || git fetch origin main &&
-              # Get the latest commit SHA directly from remote (most reliable)
-              LATEST_COMMIT=\$(git ls-remote origin refs/heads/main | cut -f1) &&
-              if [ -n \"\$LATEST_COMMIT\" ]; then
-                echo 'Latest commit on origin/main: '\$LATEST_COMMIT &&
-                # Clean working directory
-                git clean -fd &&
-                # Reset to the specific commit (works even if origin/main ref doesn't exist)
-                git reset --hard \"\$LATEST_COMMIT\" &&
-                # Ensure we're on main branch
-                git checkout -B main \"\$LATEST_COMMIT\" &&
-                # Update remote tracking
-                git branch --set-upstream-to=origin/main main 2>/dev/null || true &&
-                echo '[OK] Repository updated to main (commit: '\$LATEST_COMMIT')'
-              else
-                # Fallback: clean first, then fetch and reset
-                git clean -fd &&
               git fetch origin main &&
+              git checkout main &&
               git reset --hard origin/main &&
-                git checkout -B main origin/main &&
               echo '[OK] Repository updated to main'
-              fi
             fi &&
             
             # Update client submodule to master branch
@@ -333,29 +313,11 @@ jobs:
               git submodule sync --recursive &&
               git submodule update --init --recursive --depth 1 &&
               cd client &&
-              # Ensure remote is configured
-              git remote set-url origin https://github.com/aliyevom/Sync-client.git 2>/dev/null || true &&
-              # Fetch latest from remote
-              git fetch origin +refs/heads/master:refs/remotes/origin/master 2>/dev/null || git fetch origin master:master 2>/dev/null || git fetch origin master &&
-              # Get latest commit SHA directly from remote
-              LATEST_CLIENT_COMMIT=\$(git ls-remote origin refs/heads/master | cut -f1) &&
-              if [ -n \"\$LATEST_CLIENT_COMMIT\" ]; then
-                echo 'Latest client commit on origin/master: '\$LATEST_CLIENT_COMMIT &&
-                git clean -fd &&
-                git reset --hard \"\$LATEST_CLIENT_COMMIT\" &&
-                git checkout -B master \"\$LATEST_CLIENT_COMMIT\" &&
-                git branch --set-upstream-to=origin/master master 2>/dev/null || true &&
-                echo '[OK] Client submodule updated to master (commit: '\$LATEST_CLIENT_COMMIT')'
-              else
-                # Fallback
-                git clean -fd &&
               git fetch origin master &&
-                git reset --hard origin/master &&
-                git checkout -B master origin/master &&
-                echo '[OK] Client submodule updated to master'
-              fi &&
+              git checkout master &&
+              git pull origin master &&
               cd .. &&
-              echo '[OK] Client submodule update complete'
+              echo '[OK] Client submodule updated to master'
             fi &&
             
             # Restore or create .env file
@@ -376,16 +338,14 @@ jobs:
               [ -n \"\$GCS_BUCKET_N1\" ] && echo \"GCS_BUCKET_N1=\$GCS_BUCKET_N1\" || true
               [ -n \"\$GCS_BUCKET_U1\" ] && echo \"GCS_BUCKET_U1=\$GCS_BUCKET_U1\" || true
               [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
-              [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\\\"\$GCS_PRIVATE_KEY\\\"\" || true
+              [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\$GCS_PRIVATE_KEY\" || true
               [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
             } > .env &&
             echo '[OK] .env file created/updated' &&
             
             # Build and start containers
             set -a && [ -f .env ] && source .env && set +a &&
-            # Remove any existing containers to avoid ContainerConfig errors
-            sudo docker-compose down --remove-orphans 2>/dev/null || true &&
-            sudo docker ps -a --filter 'name=syncscribe' --format '{{.ID}}' | xargs -r sudo docker rm -f 2>/dev/null || true &&
+            sudo docker-compose down 2>/dev/null || true &&
             sudo docker-compose build --no-cache \
               --build-arg REACT_APP_SERVER_URL=\"\${REACT_APP_SERVER_URL}\" \
               --build-arg REACT_APP_RAG_PASSWORD=\"\${REACT_APP_RAG_PASSWORD}\" &&
