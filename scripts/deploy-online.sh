@@ -201,35 +201,36 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             git fetch origin 2>&1 || {
                 echo '[X] Git fetch failed, trying to continue...'
             } &&
-            # Check if the branch exists on remote
-            if git ls-remote --heads origin '$BRANCH' 2>&1 | grep -q 'refs/heads/'$BRANCH'$'; then
-                echo 'Branch '$BRANCH' exists on remote, switching to it...' &&
-                # Fetch the specific branch
-                git fetch origin '$BRANCH' 2>&1 || true &&
-                # Checkout the branch, creating it if needed
-                if git show-ref --verify --quiet refs/heads/'$BRANCH'; then
-                    echo 'Local branch '$BRANCH' exists, checking it out...' &&
-                    git checkout '$BRANCH' 2>&1 &&
-                    git reset --hard origin/'$BRANCH' 2>&1 || true
-                else
-                    echo 'Creating local branch '$BRANCH' tracking origin/'$BRANCH'...' &&
-                    git checkout -b '$BRANCH' origin/'$BRANCH' 2>&1 || {
-                        echo '[X] Failed to create branch, trying alternative...'
-                        git branch '$BRANCH' origin/'$BRANCH' 2>&1 || true &&
-                        git checkout '$BRANCH' 2>&1 || true
-                    }
-                fi &&
-                # Pull latest changes
-                git pull origin '$BRANCH' 2>&1 || {
-                    echo '[X] Git pull failed, but branch is checked out'
-                }
+            # Check if the branch exists on remote and get latest commit SHA
+            LATEST_COMMIT=\$(git ls-remote origin refs/heads/'$BRANCH' | cut -f1) &&
+            if [ -n \"\$LATEST_COMMIT\" ]; then
+                echo 'Branch '$BRANCH' exists on remote, latest commit: '\$LATEST_COMMIT &&
+                # Fetch with force update to ensure refs exist
+                git fetch origin +refs/heads/'$BRANCH':refs/remotes/origin/'$BRANCH' 2>/dev/null || git fetch origin '$BRANCH' 2>/dev/null || true &&
+                # Reset directly to the commit SHA (most reliable)
+                git reset --hard \"\$LATEST_COMMIT\" &&
+                # Ensure we're on the correct branch
+                git checkout -B '$BRANCH' \"\$LATEST_COMMIT\" &&
+                # Update remote tracking
+                git branch --set-upstream-to=origin/'$BRANCH' '$BRANCH' 2>/dev/null || true &&
+                echo '[OK] Repository updated to '$BRANCH' (commit: '\$LATEST_COMMIT')'
             else
                 echo '[X] Branch '$BRANCH' not found on remote, checking out main...' &&
-                git fetch origin main 2>&1 || true &&
-                git checkout -B main origin/main 2>&1 &&
-                git pull origin main 2>&1 || {
-                    echo '[X] Git pull failed, but continuing with existing code'
-                }
+                # Get latest main commit SHA
+                MAIN_COMMIT=\$(git ls-remote origin refs/heads/main | cut -f1) &&
+                if [ -n \"\$MAIN_COMMIT\" ]; then
+                    echo 'Latest main commit: '\$MAIN_COMMIT &&
+                    git fetch origin +refs/heads/main:refs/remotes/origin/main 2>/dev/null || git fetch origin main 2>/dev/null || true &&
+                    git reset --hard \"\$MAIN_COMMIT\" &&
+                    git checkout -B main \"\$MAIN_COMMIT\" &&
+                    git branch --set-upstream-to=origin/main main 2>/dev/null || true &&
+                    echo '[OK] Repository updated to main (commit: '\$MAIN_COMMIT')'
+                else
+                    # Fallback to standard method
+                    git fetch origin main 2>&1 || true &&
+                    git checkout -B main origin/main 2>&1 &&
+                    echo '[OK] Repository updated to main (fallback method)'
+                fi
             fi &&
             # Update submodules if they exist
             if [ -f .gitmodules ]; then
@@ -258,9 +259,18 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                             git fetch origin 2>&1 || true &&
                             git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
                                 echo '[X] Failed to checkout expected commit '$EXPECTED_CLIENT_COMMIT', updating to latest master...'
-                                git fetch origin master 2>&1 || true &&
-                                git checkout master 2>&1 || true &&
-                                git pull origin master 2>&1 || true
+                                LATEST_CLIENT_COMMIT=\$(git ls-remote origin refs/heads/master | cut -f1) &&
+                                if [ -n \"\$LATEST_CLIENT_COMMIT\" ]; then
+                                    git fetch origin +refs/heads/master:refs/remotes/origin/master 2>/dev/null || git fetch origin master 2>/dev/null || true &&
+                                    git clean -fd &&
+                                    git reset --hard \"\$LATEST_CLIENT_COMMIT\" &&
+                                    git checkout -B master \"\$LATEST_CLIENT_COMMIT\" &&
+                                    git branch --set-upstream-to=origin/master master 2>/dev/null || true
+                                else
+                                    git fetch origin master 2>&1 || true &&
+                                    git checkout master 2>&1 || true &&
+                                    git pull origin master 2>&1 || true
+                                fi
                             } &&
                             cd ..
                         elif [ ! -d client ]; then
@@ -279,9 +289,18 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                             git fetch origin 2>&1 || true &&
                             git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
                                 echo '[X] Failed to checkout expected commit, updating to latest master...'
-                                git fetch origin master 2>&1 || true &&
-                                git checkout master 2>&1 || true &&
-                                git pull origin master 2>&1 || true
+                                LATEST_CLIENT_COMMIT=\$(git ls-remote origin refs/heads/master | cut -f1) &&
+                                if [ -n \"\$LATEST_CLIENT_COMMIT\" ]; then
+                                    git fetch origin +refs/heads/master:refs/remotes/origin/master 2>/dev/null || git fetch origin master 2>/dev/null || true &&
+                                    git clean -fd &&
+                                    git reset --hard \"\$LATEST_CLIENT_COMMIT\" &&
+                                    git checkout -B master \"\$LATEST_CLIENT_COMMIT\" &&
+                                    git branch --set-upstream-to=origin/master master 2>/dev/null || true
+                                else
+                                    git fetch origin master 2>&1 || true &&
+                                    git checkout master 2>&1 || true &&
+                                    git pull origin master 2>&1 || true
+                                fi
                             } &&
                             cd ..
                         else
@@ -292,9 +311,23 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                     echo '[X] Could not determine expected client submodule commit, updating to latest master...' &&
                     if [ -d client/.git ]; then
                         cd client &&
-                        git fetch origin master 2>&1 || true &&
-                        git checkout master 2>&1 || true &&
-                        git pull origin master 2>&1 || true &&
+                        # Get latest master commit SHA directly
+                        LATEST_CLIENT_COMMIT=\$(git ls-remote origin refs/heads/master | cut -f1) &&
+                        if [ -n \"\$LATEST_CLIENT_COMMIT\" ]; then
+                            echo 'Latest client commit on origin/master: '\$LATEST_CLIENT_COMMIT &&
+                            git fetch origin +refs/heads/master:refs/remotes/origin/master 2>/dev/null || git fetch origin master 2>/dev/null || true &&
+                            git clean -fd &&
+                            git reset --hard \"\$LATEST_CLIENT_COMMIT\" &&
+                            git checkout -B master \"\$LATEST_CLIENT_COMMIT\" &&
+                            git branch --set-upstream-to=origin/master master 2>/dev/null || true &&
+                            echo '[OK] Client submodule updated to master (commit: '\$LATEST_CLIENT_COMMIT')'
+                        else
+                            # Fallback
+                            git fetch origin master 2>&1 || true &&
+                            git checkout master 2>&1 || true &&
+                            git pull origin master 2>&1 || true &&
+                            echo '[OK] Client submodule updated to master (fallback method)'
+                        fi &&
                         cd ..
                     elif [ ! -d client ]; then
                         echo 'Initializing client submodule...' &&
@@ -336,7 +369,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 [ -n \"\$GCS_BUCKET_N1\" ] && echo \"GCS_BUCKET_N1=\$GCS_BUCKET_N1\" || true
                 [ -n \"\$GCS_BUCKET_U1\" ] && echo \"GCS_BUCKET_U1=\$GCS_BUCKET_U1\" || true
                 [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
-                [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\$GCS_PRIVATE_KEY\" || true
+                [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\\\"\$GCS_PRIVATE_KEY\\\"\" || true
                 [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
                 # Don't add REACT_APP_RAG_PASSWORD to .env file (it's a build arg)
             } > ~/meeting-transcriber/.env &&
