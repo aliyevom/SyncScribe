@@ -237,8 +237,8 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 # Sync submodule URLs first
                 git submodule sync --recursive 2>&1 || true &&
                 # Get the expected submodule commit from parent repo
-                EXPECTED_CLIENT_COMMIT=$(git ls-tree HEAD client 2>&1 | awk '{print $3}' | head -1 | tr -d '[:space:]') &&
-                if [ -n "${EXPECTED_CLIENT_COMMIT}" ] && [ "${EXPECTED_CLIENT_COMMIT}" != "client" ] && [ "${EXPECTED_CLIENT_COMMIT}" != "" ]; then
+                EXPECTED_CLIENT_COMMIT=$(git ls-tree HEAD client 2>&1 | awk '{print $3}' | head -1 | tr -d '[:space:]' | grep -E '^[a-f0-9]{40}$' || echo '') &&
+                if [ -n "${EXPECTED_CLIENT_COMMIT:-}" ] && [ "${EXPECTED_CLIENT_COMMIT}" != "client" ]; then
                     echo 'Expected client submodule commit: '$EXPECTED_CLIENT_COMMIT &&
                     # Update submodule to the expected commit
                     git submodule update --init --recursive --depth 1 2>&1 || {
