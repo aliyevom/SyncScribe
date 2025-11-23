@@ -237,8 +237,8 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 # Sync submodule URLs first
                 git submodule sync --recursive 2>&1 || true &&
                 # Get the expected submodule commit from parent repo
-                EXPECTED_CLIENT_COMMIT=$(git ls-tree HEAD client 2>&1 | awk '{print $3}' | head -1) &&
-                if [ -n "$EXPECTED_CLIENT_COMMIT" ] && [ "$EXPECTED_CLIENT_COMMIT" != "client" ]; then
+                EXPECTED_CLIENT_COMMIT=$(git ls-tree HEAD client 2>&1 | awk '{print $3}' | head -1 | tr -d '[:space:]') &&
+                if [ -n "${EXPECTED_CLIENT_COMMIT}" ] && [ "${EXPECTED_CLIENT_COMMIT}" != "client" ] && [ "${EXPECTED_CLIENT_COMMIT}" != "" ]; then
                     echo 'Expected client submodule commit: '$EXPECTED_CLIENT_COMMIT &&
                     # Update submodule to the expected commit
                     git submodule update --init --recursive --depth 1 2>&1 || {
@@ -262,9 +262,9 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                     } &&
                     # Verify submodule is at correct commit
                     if [ -d client/.git ]; then
-                        CURRENT_CLIENT_COMMIT=$(cd client && git rev-parse HEAD 2>&1) &&
+                        CURRENT_CLIENT_COMMIT=$(cd client && git rev-parse HEAD 2>&1 | tr -d '[:space:]') &&
                         echo 'Current client submodule commit: '$CURRENT_CLIENT_COMMIT &&
-                        if [ "$CURRENT_CLIENT_COMMIT" != "$EXPECTED_CLIENT_COMMIT" ]; then
+                        if [ -n "${CURRENT_CLIENT_COMMIT}" ] && [ -n "${EXPECTED_CLIENT_COMMIT}" ] && [ "${CURRENT_CLIENT_COMMIT}" != "${EXPECTED_CLIENT_COMMIT}" ]; then
                             echo '[X] Client submodule commit mismatch! Expected: '$EXPECTED_CLIENT_COMMIT', Got: '$CURRENT_CLIENT_COMMIT
                             echo 'Attempting to fix by updating to expected commit...' &&
                             cd client &&
