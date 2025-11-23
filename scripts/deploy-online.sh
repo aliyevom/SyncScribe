@@ -193,20 +193,27 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             cd ~/meeting-transcriber &&
             # Fetch all branches and tags (including the target branch)
             echo 'Fetching all branches from remote...' &&
-            git fetch origin --prune --all 2>&1 &&
+            git fetch --prune --all 2>&1 &&
             # Reset any local changes that might conflict
             git reset --hard HEAD 2>&1 || true &&
             git clean -fd 2>&1 || true &&
             # Check if the branch exists on remote
             if git ls-remote --heads origin '$BRANCH' | grep -q '$BRANCH'; then
                 echo 'Branch '$BRANCH' exists on remote, switching to it...' &&
+                # Fetch the specific branch first
+                git fetch origin '$BRANCH':'$BRANCH' 2>&1 || true &&
                 # Force checkout/create the branch tracking remote
-                git checkout -B '$BRANCH' origin/'$BRANCH' 2>&1 &&
+                git checkout -B '$BRANCH' origin/'$BRANCH' 2>&1 || {
+                    echo '[X] Failed to checkout '$BRANCH', trying to create from remote...'
+                    git branch -D '$BRANCH' 2>&1 || true &&
+                    git checkout -b '$BRANCH' origin/'$BRANCH' 2>&1
+                } &&
                 git pull origin '$BRANCH' 2>&1 || {
                     echo '[X] Git pull failed for '$BRANCH', but branch is checked out'
                 }
             else
                 echo '[X] Branch '$BRANCH' not found on remote, checking out main...' &&
+                git fetch origin main 2>&1 || true &&
                 git checkout -B main origin/main 2>&1 &&
                 git pull origin main 2>&1 || {
                     echo '[X] Git pull failed, but continuing with existing code'
@@ -217,7 +224,19 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 echo 'Updating submodules...' &&
                 # Sync submodule URLs first
                 git submodule sync --recursive 2>&1 || true &&
-                # Update submodules to match the current commit
+                # For client submodule, check if we need to update to feature/RAG-UI branch
+                if [ -d client/.git ]; then
+                    echo 'Updating client submodule to feature/RAG-UI branch...' &&
+                    cd client &&
+                    git fetch origin feature/RAG-UI:feature/RAG-UI 2>&1 || true &&
+                    git checkout feature/RAG-UI 2>&1 || {
+                        echo '[X] Failed to checkout feature/RAG-UI, using default...'
+                        git checkout master 2>&1 || git checkout main 2>&1 || true
+                    } &&
+                    git pull origin feature/RAG-UI 2>&1 || git pull origin master 2>&1 || true &&
+                    cd ..
+                fi &&
+                # Update all submodules to match the current commit
                 git submodule update --init --recursive --depth 1 2>&1 || {
                     echo '[X] Submodule update failed, trying alternative method...'
                     # Try to reset submodules to the commit referenced in parent repo
