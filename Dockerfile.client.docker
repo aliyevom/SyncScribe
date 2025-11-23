@@ -6,6 +6,10 @@ WORKDIR /app/client
 ARG REACT_APP_SERVER_URL=http://localhost:5002
 ENV REACT_APP_SERVER_URL=$REACT_APP_SERVER_URL
 
+# Accept build argument for RAG password
+ARG REACT_APP_RAG_PASSWORD
+ENV REACT_APP_RAG_PASSWORD=$REACT_APP_RAG_PASSWORD
+
 COPY client/package*.json ./
 # Use npm install instead of npm ci to handle lock file mismatches
 RUN npm install --legacy-peer-deps

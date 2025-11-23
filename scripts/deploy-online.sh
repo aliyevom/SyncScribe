@@ -18,7 +18,16 @@ ZONE="${ZONE:-us-central1-a}"
 export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 export DEEPGRAM_API_KEY="${DEEPGRAM_API_KEY:-}"
 export ASSEMBLYAI_API_KEY="${ASSEMBLYAI_API_KEY:-}"
+export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
+export GCS_PROJECT_ID="${GCS_PROJECT_ID:-}"
+export GCS_BUCKET_N1="${GCS_BUCKET_N1:-}"
+export GCS_BUCKET_U1="${GCS_BUCKET_U1:-}"
+export GCS_CLIENT_EMAIL="${GCS_CLIENT_EMAIL:-}"
+export GCS_PRIVATE_KEY="${GCS_PRIVATE_KEY:-}"
 export REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL:-https://syncscribe.app}"
+# Note: REACT_APP_RAG_PASSWORD is excluded to disable password gate in production
+# Unless explicitly provided via CI env var for a specific environment
+export REACT_APP_RAG_PASSWORD="${REACT_APP_RAG_PASSWORD:-}"
 
 # Setup SSH options for service account impersonation
 SSH_OPTS="--zone=$ZONE --quiet"
@@ -40,9 +49,9 @@ if [ "$VM_STATUS" = "TERMINATED" ] || [ "$VM_STATUS" = "STOPPED" ]; then
     gcloud compute instances start "$VM_NAME" --zone="$ZONE"
     echo -e "${YELLOW}Waiting for VM to be ready (30 seconds)...${NC}"
     sleep 30
-    echo -e "${GREEN}✓ VM started${NC}"
+    echo -e "${GREEN}[OK] VM started${NC}"
 else
-    echo -e "${GREEN}✓ VM is already running${NC}"
+    echo -e "${GREEN}[OK] VM is already running${NC}"
 fi
 
 # Wait for SSH to be ready (with timeout)
@@ -70,7 +79,7 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     sudo systemctl start docker 2>/dev/null || true &&
     sudo systemctl enable docker 2>/dev/null || true &&
     sleep 3 &&
-    sudo docker ps > /dev/null 2>&1 && echo "✓ Docker daemon ready" || echo "⚠ Docker may not be fully ready"
+    sudo docker ps > /dev/null 2>&1 && echo "[OK] Docker daemon ready" || echo "[X] Docker may not be fully ready"
 ' || echo -e "${YELLOW}Warning: Could not verify Docker status${NC}"
 
 # Deploy code if not present
@@ -78,18 +87,24 @@ echo -e "${YELLOW}Step 4: Ensuring code is deployed...${NC}"
 DEPLOY_CODE="${DEPLOY_CODE:-true}"
 if [ "$DEPLOY_CODE" = "true" ]; then
     # Determine repository and branch
+    # When triggered from GitHub Actions, GITHUB_REF contains the branch that triggered the workflow
+    # (e.g., refs/heads/feature-branch or refs/heads/main)
     if [ -n "$GITHUB_REPOSITORY" ]; then
         GITHUB_REPO="$GITHUB_REPOSITORY"
         # Extract branch from GITHUB_REF (e.g., refs/heads/vm-control-workflow -> vm-control-workflow)
         if [ -n "$GITHUB_REF" ]; then
             BRANCH="${GITHUB_REF#refs/heads/}"
             BRANCH="${BRANCH#refs/tags/}"
+            echo "[OK] Using branch from workflow trigger: $BRANCH (from $GITHUB_REF)"
         else
             BRANCH="main"
+            echo "[OK] GITHUB_REF not set, defaulting to main branch"
         fi
     else
+        # Fallback for local execution
         GITHUB_REPO="${GITHUB_REPO:-aliyevom/SyncScribe}"
         BRANCH="${GITHUB_BRANCH:-main}"
+        echo "[OK] Running locally, using default branch: $BRANCH"
     fi
     
     GITHUB_REPO_URL="https://github.com/$GITHUB_REPO.git"
@@ -103,21 +118,35 @@ if [ "$DEPLOY_CODE" = "true" ]; then
     OPENAI_API_KEY_B64=$(echo -n "$OPENAI_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$OPENAI_API_KEY" | base64 | tr -d '\n')
     DEEPGRAM_API_KEY_B64=$(echo -n "$DEEPGRAM_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$DEEPGRAM_API_KEY" | base64 | tr -d '\n')
     ASSEMBLYAI_API_KEY_B64=$(echo -n "$ASSEMBLYAI_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$ASSEMBLYAI_API_KEY" | base64 | tr -d '\n')
+    OPENROUTER_API_KEY_B64=$(echo -n "$OPENROUTER_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$OPENROUTER_API_KEY" | base64 | tr -d '\n')
+    GCS_PROJECT_ID_B64=$(echo -n "$GCS_PROJECT_ID" | base64 -w 0 2>/dev/null || echo -n "$GCS_PROJECT_ID" | base64 | tr -d '\n')
+    GCS_BUCKET_N1_B64=$(echo -n "$GCS_BUCKET_N1" | base64 -w 0 2>/dev/null || echo -n "$GCS_BUCKET_N1" | base64 | tr -d '\n')
+    GCS_BUCKET_U1_B64=$(echo -n "$GCS_BUCKET_U1" | base64 -w 0 2>/dev/null || echo -n "$GCS_BUCKET_U1" | base64 | tr -d '\n')
+    GCS_CLIENT_EMAIL_B64=$(echo -n "$GCS_CLIENT_EMAIL" | base64 -w 0 2>/dev/null || echo -n "$GCS_CLIENT_EMAIL" | base64 | tr -d '\n')
+    GCS_PRIVATE_KEY_B64=$(echo -n "$GCS_PRIVATE_KEY" | base64 -w 0 2>/dev/null || echo -n "$GCS_PRIVATE_KEY" | base64 | tr -d '\n')
     REACT_APP_SERVER_URL_B64=$(echo -n "$REACT_APP_SERVER_URL" | base64 -w 0 2>/dev/null || echo -n "$REACT_APP_SERVER_URL" | base64 | tr -d '\n')
+    REACT_APP_RAG_PASSWORD_B64=$(echo -n "$REACT_APP_RAG_PASSWORD" | base64 -w 0 2>/dev/null || echo -n "$REACT_APP_RAG_PASSWORD" | base64 | tr -d '\n')
     
     gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
         # Decode environment variables from base64 (handles special characters safely)
         export OPENAI_API_KEY=\$(echo '$OPENAI_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
         export DEEPGRAM_API_KEY=\$(echo '$DEEPGRAM_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
         export ASSEMBLYAI_API_KEY=\$(echo '$ASSEMBLYAI_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
+        export OPENROUTER_API_KEY=\$(echo '$OPENROUTER_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
+        export GCS_PROJECT_ID=\$(echo '$GCS_PROJECT_ID_B64' | base64 -d 2>/dev/null || echo '')
+        export GCS_BUCKET_N1=\$(echo '$GCS_BUCKET_N1_B64' | base64 -d 2>/dev/null || echo '')
+        export GCS_BUCKET_U1=\$(echo '$GCS_BUCKET_U1_B64' | base64 -d 2>/dev/null || echo '')
+        export GCS_CLIENT_EMAIL=\$(echo '$GCS_CLIENT_EMAIL_B64' | base64 -d 2>/dev/null || echo '')
+        export GCS_PRIVATE_KEY=\$(echo '$GCS_PRIVATE_KEY_B64' | base64 -d 2>/dev/null || echo '')
         export REACT_APP_SERVER_URL=\$(echo '$REACT_APP_SERVER_URL_B64' | base64 -d 2>/dev/null || echo 'https://syncscribe.app')
+        export REACT_APP_RAG_PASSWORD=\$(echo '$REACT_APP_RAG_PASSWORD_B64' | base64 -d 2>/dev/null || echo '')
         
         # Ensure git is installed
         if ! command -v git >/dev/null 2>&1; then
             echo 'Installing git...' &&
             sudo apt-get update -qq >/dev/null 2>&1 &&
             sudo apt-get install -y git >/dev/null 2>&1 || {
-                echo '❌ Failed to install git'
+                echo '[X] Failed to install git'
                 exit 1
             }
         fi &&
@@ -130,15 +159,15 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             BACKUP_FILE=~/.env.backup.$(date +%s) &&
             cp ~/meeting-transcriber/.env \"\$BACKUP_FILE\" &&
             ENV_BACKUP_PATH=\"\$BACKUP_FILE\" &&
-            echo '✓ .env file backed up to '\$BACKUP_FILE
+            echo '[OK] .env file backed up to '\$BACKUP_FILE
         elif [ -f ~/.env ]; then
             echo 'Found .env in home directory, backing up...' &&
             BACKUP_FILE=~/.env.backup.$(date +%s) &&
             cp ~/.env \"\$BACKUP_FILE\" &&
             ENV_BACKUP_PATH=\"\$BACKUP_FILE\" &&
-            echo '✓ .env file backed up to '\$BACKUP_FILE
+            echo '[OK] .env file backed up to '\$BACKUP_FILE
         else
-            echo '⚠ No .env file found - API keys may be missing'
+            echo '[X] No .env file found - API keys may be missing'
         fi &&
         
         # Clone or update repository
@@ -146,9 +175,9 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             echo 'Cloning repository from GitHub...' &&
             rm -rf ~/meeting-transcriber &&
             git clone --depth 1 --branch '$BRANCH' '$GITHUB_REPO_URL' ~/meeting-transcriber 2>&1 || {
-                echo '⚠ Clone failed, trying main branch...' &&
+                echo '[X] Clone failed, trying main branch...' &&
                 git clone --depth 1 'https://github.com/$GITHUB_REPO.git' ~/meeting-transcriber 2>&1 || {
-                    echo '❌ Git clone failed'
+                    echo '[X] Git clone failed'
                     exit 1
                 }
             } &&
@@ -156,22 +185,22 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             # Initialize submodules if .gitmodules exists
             if [ -f .gitmodules ]; then
                 echo 'Initializing submodules...' &&
-                git submodule update --init --recursive --depth 1 2>&1 || echo '⚠ Submodule init failed, continuing...'
+                git submodule update --init --recursive --depth 1 2>&1 || echo '[X] Submodule init failed, continuing...'
             fi &&
-            echo '✓ Repository cloned'
+            echo '[OK] Repository cloned'
         else
             echo 'Repository exists, pulling latest changes...' &&
             cd ~/meeting-transcriber &&
             git fetch origin 2>&1 &&
             git checkout '$BRANCH' 2>/dev/null || git checkout main 2>/dev/null || true &&
             git pull origin '$BRANCH' 2>&1 || git pull origin main 2>&1 || {
-                echo '⚠ Git pull failed, but continuing with existing code'
+                echo '[X] Git pull failed, but continuing with existing code'
             } &&
             # Update submodules if they exist
             if [ -f .gitmodules ]; then
-                git submodule update --init --recursive --depth 1 2>&1 || echo '⚠ Submodule update failed, continuing...'
+                git submodule update --init --recursive --depth 1 2>&1 || echo '[X] Submodule update failed, continuing...'
             fi &&
-            echo '✓ Repository updated'
+            echo '[OK] Repository updated'
         fi &&
         
         # Restore or create .env file
@@ -179,7 +208,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         if [ -n \"\$ENV_BACKUP_PATH\" ] && [ -f \"\$ENV_BACKUP_PATH\" ]; then
             echo 'Restoring .env file from backup...' &&
             cp \"\$ENV_BACKUP_PATH\" ~/meeting-transcriber/.env &&
-            echo '✓ .env file restored from backup'
+            echo '[OK] .env file restored from backup'
             ENV_CREATED=true
         else
             # Try to find the latest backup file
@@ -187,7 +216,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             if [ -n \"\$LATEST_BACKUP\" ] && [ -f \"\$LATEST_BACKUP\" ]; then
                 echo 'Restoring .env file from latest backup...' &&
                 cp \"\$LATEST_BACKUP\" ~/meeting-transcriber/.env &&
-                echo '✓ .env file restored from backup'
+                echo '[OK] .env file restored from backup'
                 ENV_CREATED=true
             fi
         fi &&
@@ -200,33 +229,40 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 [ -n \"\$OPENAI_API_KEY\" ] && echo \"OPENAI_API_KEY=\$OPENAI_API_KEY\" || true
                 [ -n \"\$DEEPGRAM_API_KEY\" ] && echo \"DEEPGRAM_API_KEY=\$DEEPGRAM_API_KEY\" || true
                 [ -n \"\$ASSEMBLYAI_API_KEY\" ] && echo \"ASSEMBLYAI_API_KEY=\$ASSEMBLYAI_API_KEY\" || true
+                [ -n \"\$OPENROUTER_API_KEY\" ] && echo \"OPENROUTER_API_KEY=\$OPENROUTER_API_KEY\" || true
+                [ -n \"\$GCS_PROJECT_ID\" ] && echo \"GCS_PROJECT_ID=\$GCS_PROJECT_ID\" || true
+                [ -n \"\$GCS_BUCKET_N1\" ] && echo \"GCS_BUCKET_N1=\$GCS_BUCKET_N1\" || true
+                [ -n \"\$GCS_BUCKET_U1\" ] && echo \"GCS_BUCKET_U1=\$GCS_BUCKET_U1\" || true
+                [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
+                [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\$GCS_PRIVATE_KEY\" || true
                 [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
+                # Don't add REACT_APP_RAG_PASSWORD to .env file (it's a build arg)
             } > ~/meeting-transcriber/.env &&
-            echo '✓ .env file created from environment variables'
+            echo '[OK] .env file created from environment variables'
             ENV_CREATED=true
         fi &&
         
         # Verify docker-compose.yml exists
         if [ ! -f ~/meeting-transcriber/docker-compose.yml ]; then
-            echo '❌ docker-compose.yml not found after deployment'
+            echo '[X] docker-compose.yml not found after deployment'
             exit 1
         else
-            echo '✓ docker-compose.yml found'
+            echo '[OK] docker-compose.yml found'
         fi &&
         
         # Check if .env exists and has content
         if [ -f ~/meeting-transcriber/.env ]; then
             ENV_SIZE=\$(wc -c < ~/meeting-transcriber/.env) &&
             if [ \"\$ENV_SIZE\" -gt 10 ]; then
-                echo '✓ .env file exists and has content'
+                echo '[OK] .env file exists and has content'
                 # Show which keys are set (without revealing values)
                 echo 'Environment variables in .env:'
                 grep -E '^(OPENAI_API_KEY|DEEPGRAM_API_KEY|ASSEMBLYAI_API_KEY|REACT_APP_SERVER_URL)=' ~/meeting-transcriber/.env | sed 's/=.*/=***/' || true
             else
-                echo '⚠ .env file exists but appears empty or incomplete'
+                echo '[X] .env file exists but appears empty or incomplete'
             fi
         else
-            echo '⚠ WARNING: .env file not found - API keys are missing!'
+            echo '[X] WARNING: .env file not found - API keys are missing!'
             echo '   The application will not work without API keys.'
             echo ''
             if [ -n \"\$OPENAI_API_KEY\" ] || [ -n \"\$DEEPGRAM_API_KEY\" ] || [ -n \"\$ASSEMBLYAI_API_KEY\" ]; then
@@ -243,13 +279,13 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             fi
         fi
     " || {
-        echo -e "${RED}❌ Failed to deploy code${NC}"
+        echo -e "${RED}[X] Failed to deploy code${NC}"
         echo -e "${YELLOW}The application code needs to be on the VM to start containers.${NC}"
         echo -e "${YELLOW}Please deploy manually using: ./scripts/deploy-dev.sh${NC}"
         exit 1
     }
     
-    echo -e "${GREEN}✓ Code deployment complete${NC}"
+    echo -e "${GREEN}[OK] Code deployment complete${NC}"
 else
     echo -e "${YELLOW}Skipping code deployment (DEPLOY_CODE=false)${NC}"
 fi
@@ -272,7 +308,7 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     fi
     
     if [ -z "$COMPOSE_DIR" ] || [ ! -f "$COMPOSE_DIR/docker-compose.yml" ]; then
-        echo "❌ Error: docker-compose.yml not found."
+        echo "[X] Error: docker-compose.yml not found."
         echo "   The application needs to be deployed first."
         echo "   Please run: ./scripts/deploy-dev.sh"
         echo ""
@@ -288,20 +324,34 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     
     # Verify docker-compose.yml exists
     if [ ! -f docker-compose.yml ]; then
-        echo "❌ Error: docker-compose.yml not found in: $(pwd)"
+        echo "[X] Error: docker-compose.yml not found in: $(pwd)"
         exit 1
     fi &&
     
-    # Start services (with retry logic)
+    # Load environment variables for the build
+    set -a
+    [ -f .env ] && source .env
+    set +a
+    
+    # Rebuild and start services
+    echo "Building services..." &&
+    # Pass build arguments explicitly
+    if ! sudo docker-compose build --no-cache \
+        --build-arg REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL}" \
+        --build-arg REACT_APP_RAG_PASSWORD="${REACT_APP_RAG_PASSWORD}"; then
+        echo "[X] Build failed, trying without build args..."
+        sudo docker-compose build --no-cache
+    fi &&
+    
     if ! sudo docker-compose up -d; then
-        echo "⚠ First attempt failed. Checking container status..." &&
+        echo "[X] First attempt failed. Checking container status..." &&
         sudo docker-compose ps &&
         echo "Trying to restart..." &&
         sudo docker-compose down &&
         sleep 2 &&
         sudo docker-compose up -d
     fi &&
-    echo "✓ Containers started" &&
+    echo "[OK] Containers started" &&
     
     # Wait for services to be ready
     echo "Waiting for services to initialize (15 seconds)..." &&
@@ -319,10 +369,10 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
             chmod 644 /usr/share/nginx/html/*.worklet.js 2>/dev/null || true &&
             chmod 755 /usr/share/nginx/html/images 2>/dev/null || true &&
             chmod -R 644 /usr/share/nginx/html/images/* 2>/dev/null || true &&
-            echo \"✓ Permissions fixed\"
+            echo \"[OK] Permissions fixed\"
         "
     else
-        echo "⚠ Client container not found, skipping permission fixes"
+        echo "[X] Client container not found, skipping permission fixes"
     fi &&
     
     # Verify services
@@ -347,7 +397,7 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     echo "" &&
     echo "=== External connectivity test ===" &&
     echo "Testing if application is accessible externally..." &&
-    curl -s -I http://localhost:80 2>&1 | head -3 || echo "⚠ External test failed (this is normal if testing from VM)"
+    curl -s -I http://localhost:80 2>&1 | head -3 || echo "[X] External test failed (this is normal if testing from VM)"
 ' || {
     echo -e "${RED}Error: Failed to start services${NC}"
     echo -e "${YELLOW}Checking container status...${NC}"
@@ -376,10 +426,10 @@ VM_IP=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='ge
 DNS_IP=$(dig +short syncscribe.app 2>/dev/null | head -1 || echo "")
 
 if [ -n "$DNS_IP" ] && [ "$VM_IP" = "$DNS_IP" ]; then
-    echo -e "${GREEN}✓ DNS is correctly configured${NC}"
+    echo -e "${GREEN}[OK] DNS is correctly configured${NC}"
     DNS_OK=true
 else
-    echo -e "${RED}⚠ DNS MISMATCH!${NC}"
+    echo -e "${RED}[X] DNS MISMATCH!${NC}"
     echo "  VM IP:      $VM_IP"
     echo "  DNS points: ${DNS_IP:-not found}"
     echo ""
@@ -394,7 +444,7 @@ echo -e "${GREEN}=====================================${NC}"
 echo ""
 echo -e "${BLUE}VM IP Address: ${VM_IP}${NC}"
 if [ "$DNS_OK" = false ]; then
-    echo -e "${YELLOW}⚠ DNS needs update - site may not be accessible until DNS propagates${NC}"
+    echo -e "${YELLOW}[X] DNS needs update - site may not be accessible until DNS propagates${NC}"
     echo ""
     echo -e "${YELLOW}To fix DNS:${NC}"
     echo "  1. Go to Hostinger DNS management"
@@ -403,7 +453,7 @@ if [ "$DNS_OK" = false ]; then
     echo "  4. Wait 5-15 minutes"
     echo "  5. Run: ./scripts/fix-dns.sh to verify"
 else
-    echo -e "${GREEN}✓ DNS is configured correctly${NC}"
+    echo -e "${GREEN}[OK] DNS is configured correctly${NC}"
 fi
 echo ""
 echo -e "${BLUE}Your application URL:${NC}"
