@@ -1,0 +1,389 @@
+{
+  "info": {
+    "name": "SyncScribe Conversation Tracker API",
+    "description": "Advanced Conversation Tracking with RNN-inspired memory, Attention mechanisms, and Entity graphs",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Track Conversation Turn",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"roomId\": \"test-meeting-001\",\n  \"text\": \"We need to migrate to microservices architecture. This will improve scalability and allow independent deployments.\",\n  \"speaker\": \"John\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5002/api/conversation/track",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5002",
+          "path": ["api", "conversation", "track"]
+        },
+        "description": "Track a conversation turn. This processes the text through:\n- Feature extraction\n- Attention scoring\n- Entity graph update\n- Flow analysis\n- Coherence calculation"
+      }
+    },
+    {
+      "name": "2. Track Turn - Question",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"roomId\": \"test-meeting-001\",\n  \"text\": \"What are the main challenges with our current monolithic architecture?\",\n  \"speaker\": \"Sarah\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5002/api/conversation/track",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5002",
+          "path": ["api", "conversation", "track"]
+        },
+        "description": "Track a question turn. System will classify this as 'question' type."
+      }
+    },
+    {
+      "name": "3. Track Turn - Answer",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"roomId\": \"test-meeting-001\",\n  \"text\": \"The biggest issue is deployment bottlenecks. Every change requires a full redeployment, which slows us down.\",\n  \"speaker\": \"John\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5002/api/conversation/track",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5002",
+          "path": ["api", "conversation", "track"]
+        },
+        "description": "Track an answer turn. System will detect question→answer pattern."
+      }
+    },
+    {
+      "name": "4. Track Turn - Decision",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"roomId\": \"test-meeting-001\",\n  \"text\": \"We decided to start with the authentication service migration next quarter. Mike will lead this effort.\",\n  \"speaker\": \"Sarah\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:5002/api/conversation/track",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5002",
+          "path": ["api", "conversation", "track"]
+        },
+        "description": "Track a decision turn. System will extract decision and action entities."
+      }
+    },
+    {
+      "name": "5. Get Conversation Graph",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5002/api/conversation/graph/test-meeting-001",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5002",
+          "path": ["api", "conversation", "graph", "test-meeting-001"]
+        },
+        "description": "Get React Flow-compatible graph with:\n- Nodes (entities)\n- Edges (relationships)\n- Flow sequence\n- Attention heatmap\n- Statistics"
+      }
+    },
+    {
+      "name": "6. Get Analytics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5002/api/conversation/analytics/test-meeting-001",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5002",
+          "path": ["api", "conversation", "analytics", "test-meeting-001"]
+        },
+        "description": "Get detailed analytics:\n- Temporal analysis\n- Entity analysis\n- Pattern detection\n- Coherence trends\n- Participant balance"
+      }
+    },
+    {
+      "name": "7. Get Real-time Metrics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5002/api/conversation/metrics/test-meeting-001",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5002",
+          "path": ["api", "conversation", "metrics", "test-meeting-001"]
+        },
+        "description": "Get quick metrics for dashboard:\n- Coherence score\n- Conversation mode\n- Tone\n- Health indicators"
+      }
+    },
+    {
+      "name": "8. Reset Tracker",
+      "request": {
+        "method": "DELETE",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5002/api/conversation/test-meeting-001",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5002",
+          "path": ["api", "conversation", "test-meeting-001"]
+        },
+        "description": "Reset conversation tracking for a room. Clears all memory and starts fresh."
+      }
+    },
+    {
+      "name": "Test Scenario - Full Conversation",
+      "item": [
+        {
+          "name": "Turn 1 - Opening Question",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"architecture-meeting-001\",\n  \"text\": \"Hey everyone, thanks for joining. Today we need to discuss our API architecture. What are the biggest pain points you're experiencing?\",\n  \"speaker\": \"Sarah (PM)\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5002/api/conversation/track",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5002",
+              "path": ["api", "conversation", "track"]
+            }
+          }
+        },
+        {
+          "name": "Turn 2 - Problem Statement",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"architecture-meeting-001\",\n  \"text\": \"The main issue is our REST API performance. We're seeing 500ms response times on some endpoints, especially during peak hours. Database queries are the bottleneck.\",\n  \"speaker\": \"John (Backend Lead)\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5002/api/conversation/track"
+            }
+          }
+        },
+        {
+          "name": "Turn 3 - Technical Input",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"architecture-meeting-001\",\n  \"text\": \"I've been looking at GraphQL as an alternative. It could reduce over-fetching and give clients more flexibility. We could also implement Redis caching for frequently accessed data.\",\n  \"speaker\": \"Mike (Tech Lead)\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5002/api/conversation/track"
+            }
+          }
+        },
+        {
+          "name": "Turn 4 - Question for Clarification",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"architecture-meeting-001\",\n  \"text\": \"GraphQL sounds interesting. How would this affect our mobile team? They're currently using REST endpoints. Would they need to rewrite everything?\",\n  \"speaker\": \"Sarah (PM)\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5002/api/conversation/track"
+            }
+          }
+        },
+        {
+          "name": "Turn 5 - Technical Answer",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"architecture-meeting-001\",\n  \"text\": \"Good question. We can run both REST and GraphQL in parallel during transition. The mobile team can migrate endpoints gradually. GraphQL provides better type safety with TypeScript too.\",\n  \"speaker\": \"Mike (Tech Lead)\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5002/api/conversation/track"
+            }
+          }
+        },
+        {
+          "name": "Turn 6 - Decision",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"architecture-meeting-001\",\n  \"text\": \"Alright, we've decided to proceed with GraphQL implementation. Mike, can you create a proof of concept by end of this sprint? John will help with the database optimization work in parallel.\",\n  \"speaker\": \"Sarah (PM)\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5002/api/conversation/track"
+            }
+          }
+        },
+        {
+          "name": "Turn 7 - Commitment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"architecture-meeting-001\",\n  \"text\": \"Absolutely, I'll have the POC ready by Friday. I'll also document the migration guide for the mobile team.\",\n  \"speaker\": \"Mike (Tech Lead)\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5002/api/conversation/track"
+            }
+          }
+        },
+        {
+          "name": "GET - Graph After Full Conversation",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "http://localhost:5002/api/conversation/graph/architecture-meeting-001",
+              "protocol": "http",
+              "host": ["localhost"],
+              "port": "5002",
+              "path": ["api", "conversation", "graph", "architecture-meeting-001"]
+            },
+            "description": "Get the entity graph showing:\n- Mike, John, Sarah (people nodes)\n- GraphQL, REST, Redis, TypeScript (technical nodes)\n- Migration decisions\n- Connections between all entities"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Examples - Different Patterns",
+      "item": [
+        {
+          "name": "Problem-Solution Pattern",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"debug-session-001\",\n  \"text\": \"Our production API is returning 504 timeouts. The load balancer logs show spikes in response time.\",\n  \"speaker\": \"DevOps\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5002/api/conversation/track"
+            }
+          }
+        },
+        {
+          "name": "Solution Response",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"roomId\": \"debug-session-001\",\n  \"text\": \"Let's scale up the API pods horizontally and add request rate limiting. I'll also check for any database connection pool exhaustion.\",\n  \"speaker\": \"Backend Engineer\"\n}"
+            },
+            "url": {
+              "raw": "http://localhost:5002/api/conversation/track"
+            },
+            "description": "System should detect problem→solution pattern"
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:5002/healthz",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "5002",
+          "path": ["healthz"]
+        },
+        "description": "Check if server is running"
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:5002",
+      "type": "string"
+    }
+  ]
+}
+
