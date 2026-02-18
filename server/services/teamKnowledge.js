@@ -6,8 +6,8 @@ class TeamKnowledgeBase {
     // Hardcoded Engineering Chapters structure
     this.teamData = {
       organization: {
-        name: "National Grid Engineering Chapters",
-        mission: "Enabling collaboration and innovation across DPIT platforms",
+        name: "Engineering Chapters",
+        mission: "Enabling collaboration and innovation across platforms",
         values: ["People First", "Collaboration", "Innovation", "Consistency"],
         structure: {
           engineering: {

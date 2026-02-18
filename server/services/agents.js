@@ -30,7 +30,7 @@ const AGENTS = {
     capabilities: ['Action items', 'Key decisions', 'Team dynamics', 'Meeting summaries'],
     async system(agentInput) {
       return composePrompt(
-        `You analyze National Grid Engineering Chapter meetings. Focus on:
+        `You analyze technical team meetings. Focus on:
         - Extracting clear decisions and action items with owners
         - Identifying team dynamics and collaboration points
         - Summarizing key technical discussions
@@ -48,7 +48,7 @@ const AGENTS = {
     capabilities: ['Architecture review', 'Tech recommendations', 'Risk assessment', 'Best practices'],
     async system(agentInput) {
       return composePrompt(
-        `You analyze technical discussions for National Grid Engineering Chapters. Focus on:
+        `You analyze technical discussions for Engineering Chapters. Focus on:
         - Platform architecture decisions (ServiceNow, Teams Voice, GridGPT)
         - Security and reliability implications
         - Performance metrics and DORA standards
@@ -66,7 +66,7 @@ const AGENTS = {
     capabilities: ['Action items', 'Decision tracking', 'Blockers', 'Commitments'],
     async system(agentInput) {
       return composePrompt(
-        `You track actions and decisions for National Grid Engineering Chapters. Focus on:
+        `You track actions and decisions for Engineering Chapters. Focus on:
         - Clearly stating action items with owners
         - Capturing technical decisions and rationale
         - Identifying blockers and dependencies

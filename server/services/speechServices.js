@@ -76,7 +76,7 @@ const openAISpeechConfig = {
   response_format: "verbose_json", // Get more detailed output
   temperature: 0.0, // Lower temperature for more accurate transcription
   // Provide context prompt for better accuracy
-  prompt: `This is a National Grid Engineering Chapters meeting. Common terms include:
+  prompt: `This is a technical team meeting. Common terms include:
     DORA metrics, design-to-operate, secure-by-design, ServiceNow Greenfield,
     Windows 11, Intune, Jamf, AVD, Entra/AD, M365, Teams Voice, Teams Rooms,
     public/private cloud, Utah/Tier 1-3, DDI/Infoblox, PBX, AMI/ADMS, GridGPT.
