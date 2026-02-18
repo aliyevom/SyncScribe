@@ -1,5 +1,11 @@
 name: SyncScribe VM Control
 
+# AUTOMATED CERTIFICATE RENEWAL:
+# This workflow automatically renews SSL certificates monthly via scheduled cron job.
+# The renewal script only renews if certificate expires within 30 days, ensuring
+# certificates are renewed well before the 90-day Let's Encrypt expiry.
+# Schedule: Runs on the 1st of each month at 2 AM UTC
+
 # SETUP INSTRUCTIONS:
 # 1. Add GitHub Repository Variables (Settings > Secrets and variables > Actions > Variables):
 #    - VM_NAME: syncscribe-vm (optional, has default)
@@ -41,7 +47,13 @@ on:
           - deploy-offline
           - deploy-online
           - deploy-latest
+          - renew-certificate
         default: deploy-online
+  schedule:
+    # Run certificate renewal check monthly on the 1st at 2 AM UTC
+    # The renewal script will only renew if certificate expires within 30 days
+    # This ensures renewal happens well before the 90-day Let's Encrypt expiry
+    - cron: '0 2 1 * *'
 
 permissions:
   contents: read
@@ -55,6 +67,8 @@ env:
   USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
   # VM's service account (default compute service account)
   VM_SERVICE_ACCOUNT: "840029787447-compute@developer.gserviceaccount.com"
+  # Auto-set action to renew-certificate for scheduled runs
+  WORKFLOW_ACTION: ${{ github.event_name == 'schedule' && 'renew-certificate' || inputs.action }}
 
 jobs:
   vm-control:
@@ -110,7 +124,7 @@ jobs:
           chmod +x scripts/deploy-online.sh
 
       - name: Run deploy-offline
-        if: inputs.action == 'deploy-offline'
+        if: env.WORKFLOW_ACTION == 'deploy-offline'
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
@@ -125,7 +139,7 @@ jobs:
           ./scripts/deploy-offline.sh
 
       - name: Run deploy-online
-        if: inputs.action == 'deploy-online'
+        if: env.WORKFLOW_ACTION == 'deploy-online'
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
@@ -190,7 +204,7 @@ jobs:
             )" || echo "VM not accessible"
 
       - name: Show container status
-        if: always() && inputs.action == 'deploy-online'
+        if: always() && env.WORKFLOW_ACTION == 'deploy-online'
         env:
           CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ env.VM_SERVICE_ACCOUNT }}
         run: |
@@ -212,7 +226,7 @@ jobs:
           fi
 
       - name: Run deploy-latest
-        if: inputs.action == 'deploy-latest'
+        if: env.WORKFLOW_ACTION == 'deploy-latest'
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
@@ -405,6 +419,49 @@ jobs:
           echo "  Deployment Complete!"
           echo "======================================"
 
+      - name: Renew SSL Certificate
+        if: env.WORKFLOW_ACTION == 'renew-certificate'
+        env:
+          VM_NAME: ${{ env.VM_NAME }}
+          ZONE: ${{ env.VM_ZONE }}
+          GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+        run: |
+          echo "Renewing SSL certificate for syncscribe.app..."
+          export VM_NAME="$VM_NAME"
+          export ZONE="$ZONE"
+          export GCP_PROJECT_ID="$GCP_PROJECT_ID"
+          # Impersonate VM's service account for SSH access
+          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
+          
+          # Make script executable
+          chmod +x scripts/renew-certificate.sh
+          
+          # Run certificate renewal
+          SSH_OPTS="--zone=$ZONE --quiet"
+          if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
+            SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
+          fi
+          
+          # Upload and run renewal script on VM
+          gcloud compute scp scripts/renew-certificate.sh "$VM_NAME":~/renew-cert.sh \
+            --zone="$ZONE" \
+            --project="$GCP_PROJECT_ID" $SSH_OPTS 2>&1 || {
+            echo "[X] Failed to upload renewal script"
+            exit 1
+          }
+          
+          gcloud compute ssh "$VM_NAME" $SSH_OPTS \
+            --project="$GCP_PROJECT_ID" \
+            --command="chmod +x ~/renew-cert.sh && ~/renew-cert.sh syncscribe.app" || {
+            echo "[X] Certificate renewal failed"
+            exit 1
+          }
+          
+          echo ""
+          echo "======================================"
+          echo "  Certificate Renewal Complete!"
+          echo "======================================"
+
       - name: Show VM status
         if: always()
         run: |
@@ -420,7 +477,7 @@ jobs:
             )" || echo "VM not accessible"
 
       - name: Show container status
-        if: always() && (inputs.action == 'deploy-online' || inputs.action == 'deploy-latest')
+        if: always() && (env.WORKFLOW_ACTION == 'deploy-online' || env.WORKFLOW_ACTION == 'deploy-latest' || env.WORKFLOW_ACTION == 'renew-certificate')
         env:
           CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ env.VM_SERVICE_ACCOUNT }}
         run: |
@@ -442,7 +499,7 @@ jobs:
           fi
 
       - name: Show DNS status
-        if: always() && (inputs.action == 'deploy-online' || inputs.action == 'deploy-latest')
+        if: always() && (env.WORKFLOW_ACTION == 'deploy-online' || env.WORKFLOW_ACTION == 'deploy-latest' || env.WORKFLOW_ACTION == 'renew-certificate')
         run: |
           echo "=== DNS Status ==="
           VM_IP=$(gcloud compute instances describe "$VM_NAME" \
