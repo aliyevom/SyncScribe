@@ -272,6 +272,38 @@ jobs:
           # Impersonate VM's service account for SSH access
           export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
           
+          # Check VM status and start if needed (like deploy-online does)
+          echo "Checking VM status..."
+          VM_STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --format='get(status)')
+          if [ "$VM_STATUS" = "TERMINATED" ] || [ "$VM_STATUS" = "STOPPED" ]; then
+            echo "VM is stopped. Starting VM..."
+            gcloud compute instances start "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID"
+            echo "Waiting for VM to be ready (30 seconds)..."
+            sleep 30
+            echo "[OK] VM started"
+          else
+            echo "[OK] VM is already running"
+          fi
+          
+          # Wait for SSH to be ready
+          echo "Waiting for SSH connection..."
+          SSH_READY=false
+          for i in {1..60}; do
+            if timeout 5 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --command="echo 'SSH ready'" 2>/dev/null; then
+              SSH_READY=true
+              break
+            fi
+            if [ $((i % 5)) -eq 0 ]; then
+              echo "  Attempt $i/60..."
+            fi
+            sleep 2
+          done
+          
+          if [ "$SSH_READY" = false ]; then
+            echo "[X] Error: Could not establish SSH connection after 2 minutes"
+            exit 1
+          fi
+          
           # Deploy main repo and update client submodule to master
           SSH_OPTS="--zone=$ZONE --quiet"
           if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
