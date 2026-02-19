@@ -30,16 +30,20 @@ on:
         default: 'deploy-offline'
 
 env:
-  GCP_PROJECT_ID: meeting-trans-443019
-  VM_NAME: syncscribe-vm
-  VM_ZONE: us-central1-a
-  VM_SERVICE_ACCOUNT: 840029787447-compute@developer.gserviceaccount.com
+  # Set via GitHub Repository Variables (matching vm-control.yml)
+  GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+  VM_NAME: ${{ vars.VM_NAME || 'syncscribe-vm' }}
+  VM_ZONE: ${{ vars.VM_ZONE || 'us-central1-a' }}
+  USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
+  # VM's service account (default compute service account)
+  VM_SERVICE_ACCOUNT: "840029787447-compute@developer.gserviceaccount.com"
 
 jobs:
   scheduled-deploy:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      id-token: write
     
     steps:
       - name: Checkout repository
@@ -47,13 +51,44 @@ jobs:
         with:
           submodules: recursive
       
-      - name: Authenticate to Google Cloud
+      # Authenticate to Google Cloud via Workload Identity Federation
+      - name: Authenticate to Google Cloud (WIF)
         uses: google-github-actions/auth@v2
         with:
-          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          service_account: ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}
+          access_token_lifetime: 3600s
+          access_token_scopes: https://www.googleapis.com/auth/cloud-platform
       
-      - name: Set up Cloud SDK
+      - name: Setup gcloud CLI
         uses: google-github-actions/setup-gcloud@v2
+      
+      - name: Verify VM access and permissions
+        run: |
+          echo "Verifying VM access and permissions..."
+          if gcloud compute instances describe "$VM_NAME" \
+            --zone="$VM_ZONE" \
+            --project="$GCP_PROJECT_ID" \
+            --format="get(status,networkInterfaces[0].accessConfigs[0].natIP)" 2>&1; then
+            echo "[OK] VM access verified"
+          else
+            echo "[X] Error: Service account lacks required permissions"
+            echo ""
+            echo "Required permissions:"
+            echo "  - compute.instances.get"
+            echo "  - compute.instances.start"
+            echo "  - compute.instances.stop"
+            echo "  - compute.instances.use (for SSH)"
+            echo ""
+            echo "Grant these permissions to the service account:"
+            echo "  ${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}"
+            echo ""
+            echo "Or assign the 'Compute Instance Admin' role:"
+            echo "  gcloud projects add-iam-policy-binding $GCP_PROJECT_ID \\"
+            echo "    --member='serviceAccount:${{ secrets.GCP_WIF_SERVICE_ACCOUNT }}' \\"
+            echo "    --role='roles/compute.instanceAdmin.v1'"
+            exit 1
+          fi
       
       - name: Determine deployment action
         id: decide
@@ -90,15 +125,23 @@ jobs:
             echo "Scheduled: deploy-offline (default/fallback)"
           fi
       
+      - name: Make scripts executable
+        run: |
+          chmod +x scripts/deploy-offline.sh
+      
       - name: Run deploy-offline
         if: steps.decide.outputs.action == 'deploy-offline'
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
-          CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ env.VM_SERVICE_ACCOUNT }}
+          STOP_VM: "true"
         run: |
           echo "Running deploy-offline.sh..."
-          chmod +x scripts/deploy-offline.sh
+          export VM_NAME="$VM_NAME"
+          export ZONE="$ZONE"
+          export STOP_VM="$STOP_VM"
+          # Impersonate VM's service account for SSH access
+          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
           ./scripts/deploy-offline.sh
       
       - name: Run deploy-latest
@@ -152,7 +195,7 @@ jobs:
           
           # Check VM status and start if needed (like deploy-online does)
           echo "Checking VM status..."
-          VM_STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --format='get(status)')
+          VM_STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --format='get(status)' 2>/dev/null || echo "UNKNOWN")
           if [ "$VM_STATUS" = "TERMINATED" ] || [ "$VM_STATUS" = "STOPPED" ]; then
             echo "VM is stopped. Starting VM..."
             gcloud compute instances start "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID"
@@ -309,6 +352,10 @@ jobs:
       
       - name: Show VM status
         if: always()
+        env:
+          GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
+          VM_NAME: ${{ env.VM_NAME }}
+          VM_ZONE: ${{ env.VM_ZONE }}
         run: |
           echo "=== VM Status ==="
           gcloud compute instances describe "$VM_NAME" \
