@@ -135,14 +135,38 @@ jobs:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
           STOP_VM: "true"
+          GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
         run: |
           echo "Running deploy-offline.sh..."
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
           export STOP_VM="$STOP_VM"
+          export GCP_PROJECT_ID="$GCP_PROJECT_ID"
           # Impersonate VM's service account for SSH access
           export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
-          ./scripts/deploy-offline.sh
+          
+          # Check VM status first - if it's already stopped, skip SSH and just ensure it's stopped
+          echo "Checking VM status..."
+          VM_STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --format='get(status)' 2>/dev/null || echo "UNKNOWN")
+          
+          if [ "$VM_STATUS" = "TERMINATED" ] || [ "$VM_STATUS" = "STOPPED" ]; then
+            echo "[OK] VM is already stopped - no containers to stop"
+            echo "[OK] Application is already offline"
+          elif [ "$VM_STATUS" = "RUNNING" ]; then
+            echo "[OK] VM is running - proceeding to stop containers and VM"
+            ./scripts/deploy-offline.sh
+          else
+            echo "[WARNING] VM status is: $VM_STATUS"
+            echo "Attempting to run deploy-offline.sh anyway..."
+            ./scripts/deploy-offline.sh || {
+              echo "[WARNING] deploy-offline.sh failed, but continuing..."
+              # Try to stop VM directly if script failed
+              if [ "$STOP_VM" = "true" ]; then
+                echo "Attempting to stop VM directly..."
+                gcloud compute instances stop "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" || true
+              fi
+            }
+          fi
       
       - name: Run deploy-latest
         if: steps.decide.outputs.action == 'deploy-latest'
