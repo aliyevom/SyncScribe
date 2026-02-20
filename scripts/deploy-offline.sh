@@ -138,6 +138,7 @@ if [ "$SKIP_SSH" != "true" ]; then
         echo -e "${YELLOW}⚠ Could not SSH into VM (exit code: $SSH_EXIT_CODE)${NC}"
         echo -e "${YELLOW}⚠ This is expected if the VM is already stopped${NC}"
     fi
+fi
 
 echo -e "${GREEN}✓ Application is now offline${NC}"
 
