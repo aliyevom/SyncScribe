@@ -50,10 +50,20 @@ on:
           - renew-certificate
         default: deploy-online
   schedule:
+    # Weekdays at 7:50 AM EST (12:50 UTC during EST, 11:50 UTC during EDT)
+    # 7:50 AM EST = 12:50 UTC (during EST) or 11:50 UTC (during EDT)
+    # Using 12:50 UTC (will be 7:50 AM EST or 8:50 AM EDT)
+    - cron: '50 12 * * 1-5'  # Monday-Friday at 12:50 UTC (7:50 AM EST / 8:50 AM EDT) - deploy-latest
+    
+    # Weekdays at 5:30 PM EST (22:30 UTC during EST, 21:30 UTC during EDT)
+    # 5:30 PM EST = 22:30 UTC (during EST) or 21:30 UTC (during EDT)
+    # Using 22:30 UTC (will be 5:30 PM EST or 6:30 PM EDT)
+    - cron: '30 22 * * 1-5'  # Monday-Friday at 22:30 UTC (5:30 PM EST / 6:30 PM EDT) - deploy-offline
+    
     # Run certificate renewal check monthly on the 1st at 2 AM UTC
     # The renewal script will only renew if certificate expires within 30 days
     # This ensures renewal happens well before the 90-day Let's Encrypt expiry
-    - cron: '0 2 1 * *'
+    - cron: '0 2 1 * *'  # Monthly certificate renewal
 
 permissions:
   contents: read
@@ -67,8 +77,6 @@ env:
   USE_GKE_GCLOUD_AUTH_PLUGIN: "True"
   # VM's service account (default compute service account)
   VM_SERVICE_ACCOUNT: "840029787447-compute@developer.gserviceaccount.com"
-  # Auto-set action to renew-certificate for scheduled runs
-  WORKFLOW_ACTION: ${{ github.event_name == 'schedule' && 'renew-certificate' || inputs.action }}
 
 jobs:
   vm-control:
@@ -118,28 +126,63 @@ jobs:
             exit 1
           fi
 
+      - name: Determine deployment action
+        id: decide
+        run: |
+          # If manually triggered, use the input
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "action=${{ inputs.action }}" >> $GITHUB_OUTPUT
+            echo "Manual trigger: ${{ inputs.action }}"
+            exit 0
+          fi
+          
+          # Scheduled trigger logic
+          # Get current time in UTC
+          HOUR=$(date -u +%H)
+          MINUTE=$(date -u +%M)
+          DAY_OF_MONTH=$(date -u +%d)
+          
+          # 12:50 UTC = 7:50 AM EST / 8:50 AM EDT (start of workday - deploy-latest)
+          if [ "$HOUR" = "12" ] && [ "$MINUTE" = "50" ]; then
+            echo "action=deploy-latest" >> $GITHUB_OUTPUT
+            echo "Scheduled: deploy-latest (start of workday - weekdays)"
+          # 22:30 UTC = 5:30 PM EST / 6:30 PM EDT (end of workday - deploy-offline)
+          elif [ "$HOUR" = "22" ] && [ "$MINUTE" = "30" ]; then
+            echo "action=deploy-offline" >> $GITHUB_OUTPUT
+            echo "Scheduled: deploy-offline (end of workday - weekdays)"
+          # 1st of month at 2 AM UTC = certificate renewal
+          elif [ "$DAY_OF_MONTH" = "01" ] && [ "$HOUR" = "02" ] && [ "$MINUTE" = "00" ]; then
+            echo "action=renew-certificate" >> $GITHUB_OUTPUT
+            echo "Scheduled: renew-certificate (monthly)"
+          else
+            echo "action=deploy-offline" >> $GITHUB_OUTPUT
+            echo "Scheduled: deploy-offline (default/fallback)"
+          fi
+
       - name: Make scripts executable
         run: |
           chmod +x scripts/deploy-offline.sh
           chmod +x scripts/deploy-online.sh
 
       - name: Run deploy-offline
-        if: env.WORKFLOW_ACTION == 'deploy-offline'
+        if: steps.decide.outputs.action == 'deploy-offline'
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
           STOP_VM: "true"
+          GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
         run: |
           echo "Running deploy-offline.sh..."
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
           export STOP_VM="$STOP_VM"
+          export GCP_PROJECT_ID="$GCP_PROJECT_ID"
           # Impersonate VM's service account for SSH access
           export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
           ./scripts/deploy-offline.sh
 
       - name: Run deploy-online
-        if: env.WORKFLOW_ACTION == 'deploy-online'
+        if: steps.decide.outputs.action == 'deploy-online'
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
@@ -226,7 +269,7 @@ jobs:
           fi
 
       - name: Run deploy-latest
-        if: env.WORKFLOW_ACTION == 'deploy-latest'
+        if: steps.decide.outputs.action == 'deploy-latest'
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
@@ -452,7 +495,7 @@ jobs:
           echo "======================================"
 
       - name: Renew SSL Certificate
-        if: env.WORKFLOW_ACTION == 'renew-certificate'
+        if: steps.decide.outputs.action == 'renew-certificate'
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
@@ -509,7 +552,7 @@ jobs:
             )" || echo "VM not accessible"
 
       - name: Show container status
-        if: always() && (env.WORKFLOW_ACTION == 'deploy-online' || env.WORKFLOW_ACTION == 'deploy-latest' || env.WORKFLOW_ACTION == 'renew-certificate')
+        if: always() && (steps.decide.outputs.action == 'deploy-online' || steps.decide.outputs.action == 'deploy-latest' || steps.decide.outputs.action == 'renew-certificate')
         env:
           CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ env.VM_SERVICE_ACCOUNT }}
         run: |
@@ -531,7 +574,7 @@ jobs:
           fi
 
       - name: Show DNS status
-        if: always() && (env.WORKFLOW_ACTION == 'deploy-online' || env.WORKFLOW_ACTION == 'deploy-latest' || env.WORKFLOW_ACTION == 'renew-certificate')
+        if: always() && (steps.decide.outputs.action == 'deploy-online' || steps.decide.outputs.action == 'deploy-latest' || steps.decide.outputs.action == 'renew-certificate')
         run: |
           echo "=== DNS Status ==="
           VM_IP=$(gcloud compute instances describe "$VM_NAME" \
