@@ -247,7 +247,7 @@ jobs:
             )" || echo "VM not accessible"
 
       - name: Show container status
-        if: always() && env.WORKFLOW_ACTION == 'deploy-online'
+        if: always() && (steps.decide.outputs.action == 'deploy-online' || steps.decide.outputs.action == 'deploy-latest' || steps.decide.outputs.action == 'renew-certificate')
         env:
           CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ env.VM_SERVICE_ACCOUNT }}
         run: |
