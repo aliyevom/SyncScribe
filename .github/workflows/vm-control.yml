@@ -131,33 +131,34 @@ jobs:
         run: |
           # If manually triggered, use the input
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "action=${{ inputs.action }}" >> $GITHUB_OUTPUT
+            echo "action=${{ inputs.action }}" >> "$GITHUB_OUTPUT"
             echo "Manual trigger: ${{ inputs.action }}"
             exit 0
           fi
-          
-          # Scheduled trigger logic
-          # Get current time in UTC
-          HOUR=$(date -u +%H)
-          MINUTE=$(date -u +%M)
-          DAY_OF_MONTH=$(date -u +%d)
-          
-          # 12:50 UTC = 7:50 AM EST / 8:50 AM EDT (start of workday - deploy-latest)
-          if [ "$HOUR" = "12" ] && [ "$MINUTE" = "50" ]; then
-            echo "action=deploy-latest" >> $GITHUB_OUTPUT
-            echo "Scheduled: deploy-latest (start of workday - weekdays)"
-          # 22:30 UTC = 5:30 PM EST / 6:30 PM EDT (end of workday - deploy-offline)
-          elif [ "$HOUR" = "22" ] && [ "$MINUTE" = "30" ]; then
-            echo "action=deploy-offline" >> $GITHUB_OUTPUT
-            echo "Scheduled: deploy-offline (end of workday - weekdays)"
-          # 1st of month at 2 AM UTC = certificate renewal
-          elif [ "$DAY_OF_MONTH" = "01" ] && [ "$HOUR" = "02" ] && [ "$MINUTE" = "00" ]; then
-            echo "action=renew-certificate" >> $GITHUB_OUTPUT
-            echo "Scheduled: renew-certificate (monthly)"
-          else
-            echo "action=deploy-offline" >> $GITHUB_OUTPUT
-            echo "Scheduled: deploy-offline (default/fallback)"
-          fi
+
+          # Scheduled trigger logic (use the cron expression that triggered this run)
+          # github.event.schedule contains the exact cron string that fired
+          SCHEDULE="${{ github.event.schedule }}"
+          echo "Triggered by schedule: '$SCHEDULE'"
+
+          case "$SCHEDULE" in
+            "50 12 * * 1-5")
+              echo "action=deploy-latest" >> "$GITHUB_OUTPUT"
+              echo "Scheduled: deploy-latest (weekday morning - start of workday)"
+              ;;
+            "30 22 * * 1-5")
+              echo "action=deploy-offline" >> "$GITHUB_OUTPUT"
+              echo "Scheduled: deploy-offline (weekday evening - end of workday)"
+              ;;
+            "0 2 1 * *")
+              echo "action=renew-certificate" >> "$GITHUB_OUTPUT"
+              echo "Scheduled: renew-certificate (monthly, 1st at 2 AM UTC)"
+              ;;
+            *)
+              echo "action=deploy-offline" >> "$GITHUB_OUTPUT"
+              echo "Scheduled: deploy-offline (default/fallback - unknown schedule)"
+              ;;
+          esac
 
       - name: Make scripts executable
         run: |
