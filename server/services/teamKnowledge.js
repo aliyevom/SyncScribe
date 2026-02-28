@@ -26,7 +26,7 @@ class TeamKnowledgeBase {
                   performance: "3ms average DNS response time",
                   scale: "Managing 50,000+ IP addresses"
                 },
-                "GridGPT/Connect AI": {
+                "Connect AI": {
                   accuracy: "95% correct responses",
                   usage: "2,000+ daily interactions"
                 }
@@ -282,7 +282,7 @@ class TeamKnowledgeBase {
     // Add default technical terms
     techKeywords.push(
       'API', 'database', 'frontend', 'backend', 'deployment', 'testing',
-      'ServiceNow', 'Teams Voice', 'GridGPT', 'Infoblox'
+      'ServiceNow', 'Teams Voice',  'Infoblox'
     );
     
     techKeywords.forEach(tech => {

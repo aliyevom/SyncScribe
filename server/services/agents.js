@@ -49,7 +49,7 @@ const AGENTS = {
     async system(agentInput) {
       return composePrompt(
         `You analyze technical discussions for Engineering Chapters. Focus on:
-        - Platform architecture decisions (ServiceNow, Teams Voice, GridGPT)
+        - Platform architecture decisions (ServiceNow, Teams Voice)
         - Security and reliability implications
         - Performance metrics and DORA standards
         - Cost and operational impacts

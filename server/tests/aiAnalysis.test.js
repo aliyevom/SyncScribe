@@ -40,7 +40,7 @@ describe('AI Analysis Integration Tests', () => {
       const transcript = `
         Our ServiceNow Greenfield platform is showing 99.9% uptime, but ticket resolution time needs improvement.
         Teams Voice adoption is at 85% with 12,000 daily calls, and we're planning to equip 50 more meeting rooms.
-        GridGPT accuracy is hitting 95%, but we want to reach 98% by optimizing the model.
+        The accuracy is hitting 95%, but we want to reach 98% by optimizing the model.
       `;
 
       // Get agent configuration
@@ -81,7 +81,7 @@ describe('AI Analysis Integration Tests', () => {
       // Verify technical context
       assert(analysis.includes('ServiceNow'), 'Analysis missing platform reference');
       assert(analysis.includes('Teams Voice'), 'Analysis missing Teams Voice reference');
-      assert(analysis.includes('GridGPT'), 'Analysis missing GridGPT reference');
+      assert(analysis.includes('Connect AI'), 'Analysis missing Connect AI reference');
       
       // Verify metrics inclusion
       assert(analysis.includes('99.9%'), 'Analysis missing uptime metric');
