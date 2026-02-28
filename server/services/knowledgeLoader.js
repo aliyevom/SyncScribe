@@ -38,7 +38,7 @@ DPIT Platforms:
 - ServiceNow Greenfield: Latest deployment metrics
 - Teams Voice/Rooms: Current adoption rates
 - DDI/Infoblox: Configuration standards
-- GridGPT/Connect AI: Use case library
+- Connect AI: Use case library
 - DORA Metrics: Performance tracking
 
 Security Standards:

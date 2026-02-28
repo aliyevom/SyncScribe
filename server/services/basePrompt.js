@@ -40,7 +40,7 @@ Technical Context:
 - ServiceNow Greenfield implementations
 - Teams Voice/Rooms deployment metrics
 - Actual DDI/Infoblox configurations
-- Real GridGPT/Connect AI use cases
+- Real Connect AI use cases
 
 Evidence Requirements:
 - Back claims with DPIT metrics

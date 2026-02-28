@@ -43,7 +43,7 @@ module.exports = {
   getMockTranscript: () => `
     Our ServiceNow Greenfield platform is showing 99.9% uptime, but ticket resolution time needs improvement.
     Teams Voice adoption is at 85% with 12,000 daily calls, and we're planning to equip 50 more meeting rooms.
-    GridGPT accuracy is hitting 95%, but we want to reach 98% by optimizing the model.
+    Connect AI accuracy is hitting 95%, but we want to reach 98% by optimizing the model.
   `,
   getMockMeetingContext: () => ({
     title: 'Platform Performance Review',
