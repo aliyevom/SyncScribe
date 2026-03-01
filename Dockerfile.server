@@ -1,5 +1,6 @@
 # Server container (Node.js)
-FROM node:18-alpine
+# Node 20 required: react-router-dom@7+ requires node>=20
+FROM node:20-alpine
 
 ENV NODE_ENV=production
 WORKDIR /app/server

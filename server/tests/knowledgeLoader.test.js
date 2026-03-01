@@ -37,7 +37,7 @@ describe('Knowledge Integration Tests', () => {
       // Test ServiceNow metrics
       assert(platforms['ServiceNow Greenfield'].metrics.includes('99.9% uptime'), 'ServiceNow metrics missing');
       assert(platforms['Teams Voice/Rooms'].adoption.includes('85% employee usage'), 'Teams metrics missing');
-      assert(platforms['GridGPT/Connect AI'].accuracy.includes('95% correct'), 'GridGPT metrics missing');
+      assert(platforms['Connect AI'].accuracy.includes('95% correct'), 'Connect AI metrics missing');
     });
 
     it('should provide DORA metrics', () => {
@@ -59,7 +59,7 @@ describe('Knowledge Integration Tests', () => {
     });
 
     it('should build context-aware prompt', () => {
-      const transcript = 'Let\'s discuss the GridGPT accuracy improvements and DDI/Infoblox performance';
+      const transcript = 'Let\'s discuss the Connect AI accuracy improvements and DDI/Infoblox performance';
       const contextData = teamKnowledge.buildContextPrompt(transcript);
       
       assert(contextData.context.includes('Technologies discussed:'), 'Missing technology context');
@@ -70,10 +70,10 @@ describe('Knowledge Integration Tests', () => {
   describe('Response Generation', () => {
     it('should format metrics correctly', () => {
       const platforms = teamKnowledge.teamData.organization.structure.engineering.techStack.platforms;
-      const gridgpt = platforms['GridGPT/Connect AI'];
+      const connectai = platforms['Connect AI'];
       
-      assert(gridgpt.accuracy === '95% correct responses', 'Incorrect metric format');
-      assert(gridgpt.usage === '2,000+ daily interactions', 'Incorrect usage format');
+      assert(connectai.accuracy === '95% correct responses', 'Incorrect metric format');
+      assert(connectai.usage === '2,000+ daily interactions', 'Incorrect usage format');
     });
 
     it('should maintain style guidelines', async () => {
@@ -110,7 +110,7 @@ async function runPromptTest() {
     We need to improve our ServiceNow Greenfield deployment metrics. 
     Currently at 99.9% uptime but we're seeing some delays in ticket resolution.
     Teams Voice adoption is good at 85% but we need better meeting room coverage.
-    GridGPT accuracy is hitting 95% but we want to reach 98%.
+    Connect AI accuracy is hitting 95% but we want to reach 98%.
   `;
 
   const result = await generateTestPrompt(transcript);

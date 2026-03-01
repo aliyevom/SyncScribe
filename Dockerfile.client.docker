@@ -1,5 +1,6 @@
 # Client container (React) - Docker Compose Version
-FROM node:18-alpine AS build
+# Node 20 required: serialize-javascript@7+ and glob@11+ use global crypto / Node 20+ APIs
+FROM node:20-alpine AS build
 WORKDIR /app/client
 
 # Accept build argument for server URL
