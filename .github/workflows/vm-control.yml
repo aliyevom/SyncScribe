@@ -418,7 +418,8 @@ jobs:
               fi
             fi &&
             
-            # Create/update .env from environment variables
+            # Create/update .env from environment variables (GCS key on one line to avoid source .env parsing errors)
+            GCS_PRIVATE_KEY_ESC=\$(printf '%s' \"\$GCS_PRIVATE_KEY\" | awk 'BEGIN{ORS=\"\\\\n\"} {print}' | sed 's/\\\\n\$//') &&
             {
               [ -n \"\$OPENAI_API_KEY\" ] && echo \"OPENAI_API_KEY=\$OPENAI_API_KEY\" || true
               [ -n \"\$DEEPGRAM_API_KEY\" ] && echo \"DEEPGRAM_API_KEY=\$DEEPGRAM_API_KEY\" || true
@@ -428,7 +429,7 @@ jobs:
               [ -n \"\$GCS_BUCKET_N1\" ] && echo \"GCS_BUCKET_N1=\$GCS_BUCKET_N1\" || true
               [ -n \"\$GCS_BUCKET_U1\" ] && echo \"GCS_BUCKET_U1=\$GCS_BUCKET_U1\" || true
               [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
-              [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\$GCS_PRIVATE_KEY\" || true
+              [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\\\"\$GCS_PRIVATE_KEY_ESC\\\"\" || true
               [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
             } > .env &&
             echo '[OK] .env file created/updated' &&
