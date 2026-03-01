@@ -348,6 +348,11 @@ jobs:
             exit 1
           fi
           
+          # Deploy the exact commit this workflow ran on (deploy-online uses scripts/deploy-online.sh
+          # and does git pull so it gets latest main; deploy-latest runs inline below and must checkout
+          # GITHUB_SHA so the VM builds the same code the runner checked out, not stale origin/main)
+          DEPLOY_REF="${GITHUB_SHA:-origin/main}"
+          
           # Deploy main repo and update client submodule to master
           SSH_OPTS="--zone=$ZONE --quiet"
           if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
@@ -383,18 +388,18 @@ jobs:
               cp .env ~/.env.backup.\$(date +%s) && echo '[OK] .env backed up'
             fi &&
             
-            # Clone or update main repository (SyncScribe)
+            # Clone or update repository and checkout same commit as this workflow run
             if [ ! -d .git ]; then
-              echo 'Cloning SyncScribe repository (main branch)...' &&
+              echo 'Cloning SyncScribe repository...' &&
               rm -rf ~/meeting-transcriber/* ~/meeting-transcriber/.* 2>/dev/null || true &&
               git clone --branch main https://github.com/$GITHUB_REPOSITORY.git ~/meeting-transcriber &&
-              echo '[OK] Repository cloned'
+              cd ~/meeting-transcriber && git fetch origin main && git checkout $DEPLOY_REF &&
+              echo '[OK] Repository cloned at '$DEPLOY_REF
             else
-              echo 'Updating SyncScribe repository to main branch...' &&
+              echo 'Updating SyncScribe to commit '$DEPLOY_REF' (same as this workflow run)...' &&
               git fetch origin main &&
-              git checkout main &&
-              git reset --hard origin/main &&
-              echo '[OK] Repository updated to main'
+              git checkout $DEPLOY_REF && echo '[OK] Checked out '$DEPLOY_REF &&
+              echo '[OK] Repository updated'
             fi &&
             
             # Update client submodule to master branch
@@ -410,8 +415,8 @@ jobs:
               echo '[OK] Client submodule updated to master'
             fi &&
             
-            # Restore or create .env file
-            if [ -f ~/.env.backup.* ]; then
+            # Restore or create .env file (use ls exit code to avoid \"too many arguments\" when glob matches multiple files)
+            if ls -t ~/.env.backup.* 1>/dev/null 2>&1; then
               LATEST_BACKUP=\$(ls -t ~/.env.backup.* | head -1) &&
               if [ -n \"\$LATEST_BACKUP\" ]; then
                 cp \"\$LATEST_BACKUP\" .env && echo '[OK] .env restored from backup'
