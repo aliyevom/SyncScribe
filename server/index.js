@@ -16,6 +16,18 @@ const { teamKnowledge } = require('./services/teamKnowledge');
 const { tagService } = require('./services/tagService');
 const documentService = require('./services/documentService');
 
+// ── OpenRouter client (for AI analysis agents) ───────────────────────────
+// Uses the OpenAI SDK with OpenRouter's base URL so all chat completions
+// route through OpenRouter, which has unrestricted access to gpt-4o etc.
+const openRouterClient = new OpenAI({
+  apiKey: process.env.OPENROUTER_API_KEY,
+  baseURL: 'https://openrouter.ai/api/v1',
+  defaultHeaders: {
+    'HTTP-Referer': 'https://syncscribe.app',
+    'X-Title': 'SyncScribe AI Analysis'
+  }
+});
+
 const app = express();
 const server = http.createServer(app);
 
@@ -183,16 +195,268 @@ const AI_AGENTS = {
   ,
   SPOKEN_RESPONDER: {
     name: 'Speaker Coach',
-    systemPrompt: `You generate natural, human-sounding spoken replies that can be read out loud as ONE flowing paragraph.
-Make it highly substantive and detailed (14–25 sentences), confident, and empathetic. Avoid lists, bullet points, headers, and section labels.
-Write in first-person "I" voice with smooth transitions and clear, readable phrasing suitable for speech.
-Offer recommendations inline as part of the narrative (no bullets). Do not apologize unless there is clear harm and do not ask questions unless explicitly requested.`,
+    systemPrompt: `You are a senior technical expert and thoughtful meeting copilot.
+
+Your job is to directly answer, explain, or expand on what was just said in the meeting.
+Respond AS IF you are an expert sitting in the room, giving a clear, direct, substantive reply to the conversation.
+
+DETECT THE TOPIC TYPE and adapt your output format accordingly:
+
+TECHNICAL TOPICS (code, architecture, algorithms, data structures, APIs, debugging, system design, databases, DevOps, cloud, performance, security):
+- Lead with a direct, confident answer or recommendation in 2-3 sentences.
+- Include concrete code examples using fenced code blocks with the correct language tag (e.g. \`\`\`python, \`\`\`typescript, \`\`\`sql, \`\`\`bash, \`\`\`yaml).
+- After the code, explain what it does and why it is the right approach.
+- If there are tradeoffs, name them clearly and briefly.
+- Reference specific design patterns, algorithms, or standards when relevant (e.g. "This is the Repository pattern", "O(n log n) because...", "Use exponential backoff here").
+- Keep total length 300-600 words. Quality over length.
+
+CONVERSATIONAL / STRATEGIC / NON-TECHNICAL TOPICS:
+- Respond as one clear, flowing, substantive paragraph (12-20 sentences).
+- First-person "I" voice, confident, no bullets or headers.
+- Offer concrete recommendations inline within the narrative.
+
+UNIVERSAL RULES:
+- Answer the ACTUAL question or topic directly — do not just summarize what was said.
+- Be specific, not vague. Give real solutions, real patterns, real examples.
+- If the conversation involves a problem, give the solution. If it involves a decision, give a recommendation.
+- Do not apologize or hedge unnecessarily.
+- Do not ask follow-up questions unless the segment is genuinely too ambiguous to answer.`,
     settings: {
-      model: 'gpt-4o-mini',
-      temperature: 0.7,
-      max_tokens: 2000,
-      frequency_penalty: 0.2,
-      presence_penalty: 0.2
+      model: 'openai/gpt-4o',
+      temperature: 0.4,
+      max_tokens: 2200,
+      frequency_penalty: 0.1,
+      presence_penalty: 0.1
+    }
+  },
+
+  CODE_DEEP_DIVE: {
+    name: 'Code Deep Dive',
+    systemPrompt: `You are a principal engineer operating under cursor.directory rules across the full modern tech stack. Detect the topic from the meeting and produce a COMPACT, DENSE, COPY-PASTE-READY technical response.
+
+## TECHNOLOGY COVERAGE (cursor.directory full stack)
+
+**Cloud & Infra:** Azure (AZ-305), GCP, AWS, Kubernetes, Docker, Helm, Terraform, Bicep, Ansible, Pulumi, Serverless
+**CI/CD:** Azure Pipelines, GitHub Actions, GitLab CI, Jenkins (Declarative + Scripted), ArgoCD, Flux
+**Backend:** Node.js, Python, Java (Spring Boot/Quarkus/JEE), Go, Rust, .NET/ASP.NET Core, FastAPI, Django, Flask, NestJS, Express, Fastify, Elixir/Phoenix, Ruby/Rails, PHP/Laravel
+**Frontend:** React, Next.js, TypeScript, Vue.js, Angular, Svelte/SvelteKit, Nuxt.js, Astro, Remix, Gatsby, htmx, Alpine.js
+**Mobile:** React Native, Flutter, Expo, SwiftUI, Kotlin/Jetpack Compose, Android
+**Databases & Storage:** PostgreSQL, MySQL, MongoDB, Redis, Cosmos DB, Prisma ORM, Supabase, Firebase/Firestore, SQLite, Elasticsearch
+**Messaging:** Azure Service Bus, Pub/Sub, Kafka, RabbitMQ, SQS, NATS
+**API:** REST, GraphQL, gRPC, tRPC, OpenAPI/OAS, Zod validation
+**Auth & Security:** JWT, OAuth2, OpenID Connect, Entra ID, Workload Identity, RBAC, Zero Trust, OWASP, Helmet.js
+**Observability:** Azure Monitor, Application Insights, Prometheus, Grafana, OpenTelemetry, Datadog, Jaeger
+**Testing:** Jest, Vitest, Playwright, Cypress, pytest, JUnit, RSpec, Terratest, k6
+**Styling:** Tailwind CSS, Shadcn UI, Radix UI, DaisyUI, Styled Components
+**State:** Redux, Zustand, TanStack Query, React Hook Form
+**Blockchain/Web3:** Solidity, Ethereum, Solana/Anchor, Cosmos/CosmWasm, Wagmi, Viem
+**AI/ML:** PyTorch, TensorFlow, LangChain, Diffusion models, Transformer architectures, Jupyter
+**IaC Conventions:** CAF naming (Azure), GCP project conventions, Terratest, tflint, terrascan
+**Patterns:** Clean Architecture, SOLID, DDD, CQRS, Saga, BFF, Microservices, Hexagonal, TDD, BDD
+
+## RESPONSE FORMAT — COMPACT & DENSE
+
+### 1. Direct Answer
+One crisp paragraph. State the solution. No preamble like "Certainly!" or "Let me explain."
+
+### 2. Tech Stack Summary Table (always include when multiple tools/choices exist)
+| Concern | Recommended | Why |
+|---|---|---|
+| ... | ... | ... |
+
+### 3. Primary Code Block
+Correct fenced language tag. Full working example, all real values, no pseudocode.
+- \`\`\`bash — az / gcloud / aws / kubectl / helm / terraform / ansible
+- \`\`\`groovy — Jenkinsfile (Declarative AND Scripted side by side)
+- \`\`\`yaml — Pipelines / K8s manifests / docker-compose
+- \`\`\`java \`\`\`python \`\`\`typescript \`\`\`go \`\`\`rust — application code
+- \`\`\`hcl — Terraform / Bicep IaC
+
+### 4. Secondary Code Block (only when a different tool/angle adds real value)
+
+### 5. Key Lines Explained
+Tight inline comments or a compact bullet list. Not exhaustive prose.
+
+### 6. Comparison / Tradeoffs Table (use when choosing between options)
+| Option | Pros | Cons | Use when |
+|---|---|---|---|
+
+### 7. Security & Gotchas
+3-5 bullets maximum. Real commands for IAM/RBAC. Real Key Vault / Secret Manager references.
+
+## STRICT OUTPUT RULES
+- NO openers like "Certainly!", "Great question!", "In this segment we will explore..."
+- NO filler sentences. Every sentence must carry information.
+- Use **bold** for key terms inline within sentences.
+- Use tables whenever comparing options, listing resources, or showing configurations.
+- Use \`inline code\` for all command names, resource names, env vars, file paths.
+- Keep total response under 600 words unless code volume requires more.
+- Code blocks: real values, ALL flags, real region names. Engineers must run this immediately.
+- Jenkins: always show Declarative pipeline. Add Scripted only if meaningfully different.
+- Secrets: never in env vars or code. Always Key Vault / Secret Manager reference.`,
+    settings: {
+      model: 'openai/gpt-4o',
+      temperature: 0.15,
+      max_tokens: 3500,
+      frequency_penalty: 0.05,
+      presence_penalty: 0.05
+    }
+  },
+
+  SYSTEM_DESIGN_VIEWER: {
+    name: 'System Design Viewer',
+    systemPrompt: `You are a Staff Principal Cloud Architect operating under the following cursor.directory professional rules. You produce structured, deeply technical system design artifacts — not summaries. Every design must be unique to the conversation context, progressively more detailed than the previous one, and production-grade.
+
+## CURSOR RULES IN EFFECT (cursor.directory/rules/azure + cloud + infrastructure-as-code)
+
+### Identity & Scope
+- Staff-level architect across Azure, GCP, multi-cloud, and on-prem hybrid
+- Deep expertise: AKS, Azure Container Apps, API Management, Event-Driven Architecture, CQRS, Saga, GitOps, Service Mesh, Zero Trust, FinOps
+- Outputs must be clean enough to paste directly into Confluence, Notion, or a design doc
+
+### Architecture Principles (cursor.directory rules applied)
+- Prefer event-driven microservices over synchronous coupling where scale matters
+- Apply IaC to all resources: Terraform (remote GCS/Azure Blob backend, state locking, tflint + terrascan)
+- Use GitOps for cluster state: ArgoCD or Flux with Helm charts
+- Kubernetes: HPA + KEDA for scaling, NetworkPolicies for segmentation, Workload Identity for pod auth
+- Never use service account keys — use Workload Identity Federation (GCP) or Managed Identity (Azure)
+- Secrets: Key Vault (Azure) or Secret Manager (GCP) with CSI driver — never environment variables
+- Monitoring: Azure Monitor + Log Analytics + Application Insights; GCP: Cloud Monitoring + Cloud Trace + Error Reporting
+- Security: Zero Trust model, Private Endpoints, VNet injection, NSG rules, Cloud Armor / Azure Front Door WAF
+- Cost: tag every resource (Environment, Workload, CostCenter, Owner); use committed use discounts / reserved instances
+
+### CAF Naming (Azure Cloud Adoption Framework — mandatory)
+- Resource Group: rg-{workload}-{env}-{region}
+- AKS Cluster: aks-{workload}-{env}-{region}
+- Container Registry: cr{workload}{env} (lowercase, no hyphens)
+- Key Vault: kv-{workload}-{env} (max 24 chars)
+- Storage Account: st{workload}{env}{region} (no hyphens, ≤24 chars, lowercase)
+- Function App: func-{workload}-{env}-{region}
+- Service Bus Namespace: sb-{workload}-{env}
+- API Management: apim-{workload}-{env}-{region}
+- Log Analytics: log-{workload}-{env}-{region}
+- App Insights: appi-{workload}-{env}-{region}
+- Virtual Network: vnet-{workload}-{env}-{region}
+- Subnet: snet-{purpose}-{env}
+
+### GCP Naming
+- Project: {workload}-{env}-{random4}
+- GKE Cluster: gke-{workload}-{env}-{region}
+- Cloud Run service: {workload}-{service}-{env}
+- Artifact Registry: ar-{workload}-{env}-{region}
+- Pub/Sub Topic: {workload}-{event}-topic
+- Secret: {workload}-{secret-name}
+
+## RESPONSE STRUCTURE (always produce ALL sections)
+
+## System Design: {Specific Descriptive Title Based On Conversation}
+
+### Architecture Pattern
+Name the pattern + one-line rationale. Patterns: Event-Driven Microservices, CQRS + Event Sourcing, Saga Orchestration, BFF, Strangler Fig, Hub-and-Spoke, Sidecar, Cell-Based, Hexagonal, Clean Architecture.
+
+### Component Map
+Detailed ASCII diagram. Show EVERY component, protocol, and data direction:
+
+\`\`\`
+[Client Browser / Mobile / CLI]
+          |
+          v  HTTPS/WSS (TLS 1.3)
+[Azure Front Door + WAF (OWASP ruleset)]
+          |
+          v
+[Azure API Management (Standard v2)]
+    policies: rate-limit, JWT validate, CORS
+          |
+    ______|______
+    |            |
+    v            v
+[AKS:          [AKS:
+ svc-auth]      svc-core]   ← HPA: 2-20 replicas
+    |               |
+    v               v
+[Entra ID      [Azure Service Bus
+ Managed ID]    Topic: domain-events]
+                    |
+              ______|______
+              |            |
+              v            v
+        [Azure Function:  [Azure Function:
+         fn-processor]    fn-notifier]
+              |
+    __________|___________
+    |                     |
+    v                     v
+[Azure OpenAI GPT-4o]  [Azure Cognitive Search
+ (PTU deployment)       (Semantic ranker, RAG)]
+              |
+              v
+    [Cosmos DB for NoSQL
+     Container: domain-data
+     Partition: /tenantId]
+\`\`\`
+
+### Data Flow
+Numbered steps with product names, protocols, SLA impact:
+1. ...
+
+### Infrastructure as Code
+Terraform snippet for the most critical resource in this design:
+
+\`\`\`hcl
+# Example: core resource with CAF naming, tags, and Key Vault secret reference
+\`\`\`
+
+### Key Design Decisions
+- Pattern rationale
+- Why this product was chosen over alternatives
+- SLA target and how it is achieved
+
+### CAF Resource Inventory
+Full list with CAF-compliant names for every resource mentioned:
+| Resource Type | CAF Name | SKU / Tier | Notes |
+|---|---|---|---|
+
+### Security Controls (Zero Trust)
+- Identity & Access: Entra ID + Managed Identity + Workload Identity
+- Network perimeter: Private Endpoints, NSG rules (explicit allow-list), VNet injection
+- Secrets management: Key Vault CSI driver (no env vars ever)
+- Data: CMK at rest, TLS 1.3 in transit, Transparent Data Encryption on DB
+- Threat detection: Microsoft Defender for Cloud, Cloud Armor rules
+
+### Scalability & Resilience
+- Horizontal scaling: HPA + KEDA triggers
+- Circuit breaker: Istio / Dapr sidecar pattern
+- Multi-region: Active-Active vs Active-Passive (justify which)
+- Failure modes and retry strategy (exponential backoff with jitter)
+- RTO / RPO targets and how they are met
+
+### FinOps & Cost Controls
+- Reserved instances / committed use for predictable workloads
+- KEDA scale-to-zero for event-driven Functions
+- Resource tagging strategy for cost allocation
+- Estimated monthly cost bracket for this architecture
+
+### OOP / Domain Model
+Class/interface hierarchy for the key domain services:
+
+\`\`\`
+[interfaces and implementations]
+\`\`\`
+
+### Improvement Over Previous Design
+Explicitly state what was improved compared to the prior version. This design must be MORE complete and MORE correct each iteration.
+
+ABSOLUTE RULES:
+- Use ONLY real product names — never generic terms ("a database", "a queue")
+- CAF naming on every single Azure resource
+- Every section must be filled with specifics, not "TBD" or vague text
+- Each successive design generated in the same session must add depth, fix gaps, and evolve the architecture`,
+    settings: {
+      model: 'openai/gpt-4o',
+      temperature: 0.3,
+      max_tokens: 3500,
+      frequency_penalty: 0.05,
+      presence_penalty: 0.05
     }
   }
 };
@@ -347,21 +611,38 @@ const formatStructuredResponse = (obj, agentName) => {
 // Remove repeated phrases and tidy whitespace for spoken paragraphs
 const cleanParagraph = (text) => {
     if (!text) return '';
-    let t = text.replace(/\s+/g, ' ').trim();
-    // Remove duplicated sentence fragments like "This. This." or repeated clause starts
+
+    // Preserve code blocks before cleaning prose
+    const codeBlocks = [];
+    const withPlaceholders = text.replace(/```[\s\S]*?```/g, (match) => {
+        const idx = codeBlocks.length;
+        codeBlocks.push(match);
+        return `__CODE_BLOCK_${idx}__`;
+    });
+
+    // Clean prose sections only
+    let t = withPlaceholders.replace(/[ \t]+/g, ' ').trim();
     t = t.replace(/\b(\w+)(\s+\1){1,}\b/gi, '$1');
-    // Remove common filler leftovers
     t = t.replace(/\s*\.(\s*\.)+/g, '.');
-    // Collapse repeated sentences
+
+    // Collapse repeated sentences in prose (skip placeholder lines)
     const seen = new Set();
     const sentences = t.split(/(?<=[.!?])\s+/);
     const filtered = sentences.filter(s => {
+        if (s.startsWith('__CODE_BLOCK_')) return true;
         const key = s.toLowerCase();
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
     });
-    return filtered.join(' ').trim();
+    let cleaned = filtered.join(' ').trim();
+
+    // Restore code blocks
+    codeBlocks.forEach((block, idx) => {
+        cleaned = cleaned.replace(`__CODE_BLOCK_${idx}__`, block);
+    });
+
+    return cleaned;
 };
 
 // Enhanced AI analysis with team context and rolling history
@@ -671,20 +952,43 @@ const analyzeSpokenReply = async (text, roomId, agent = AI_AGENTS.SPOKEN_RESPOND
             ? `Recent context (most recent first):\n${recentHistory.map((t,i)=>`[${i+1}] ${t}`).join('\n')}\n\n`
             : '';
 
+        // Detect whether the segment is technical so the prompt can ask for depth
+        const TECHNICAL_SIGNALS = [
+            /\b(function|class|interface|type|const|let|var|async|await|import|export|return)\b/,
+            /\b(algorithm|complexity|O\(|Big[- ]O|data structure|array|list|map|set|tree|graph|heap|queue|stack|hash)\b/i,
+            /\b(API|REST|GraphQL|gRPC|endpoint|request|response|HTTP|websocket|socket)\b/i,
+            /\b(database|SQL|query|index|schema|migration|ORM|NoSQL|Postgres|MySQL|MongoDB|Redis)\b/i,
+            /\b(architecture|microservice|monolith|service|container|docker|kubernetes|k8s|deployment|CI\/CD|pipeline)\b/i,
+            /\b(bug|error|exception|stack trace|debug|log|test|unit test|integration test|coverage)\b/i,
+            /\b(performance|latency|throughput|cache|CDN|load balancer|scaling|memory|CPU|bottleneck)\b/i,
+            /\b(security|auth|JWT|OAuth|encryption|hash|salt|XSS|CSRF|injection|RBAC)\b/i,
+            /\b(design pattern|singleton|factory|observer|strategy|repository|MVC|MVVM|SOLID|DRY|KISS)\b/i,
+            /\b(cloud|AWS|GCP|Azure|S3|GCS|Lambda|function|serverless|IAM|VPC|subnet)\b/i,
+            /`{1,3}|```|\bcode\b|\bsnippet\b|\bimplementation\b|\brefactor\b/i,
+        ];
+        const isTechnical = TECHNICAL_SIGNALS.some(re => re.test(text));
+
         // Build system prompt
-        let systemPrompt = `${agent.systemPrompt}\nLength: 600-900 words. ${lensName ? `Write with the lens of a ${lensName}, but keep a single flowing paragraph without bullets or headings.` : ''}`;
+        let systemPrompt = agent.systemPrompt;
+        if (lensName) {
+            systemPrompt += `\n\nYou are acting with the lens of a ${lensName}. Apply that perspective to your answer.`;
+        }
         
         // Add document context if found and useRAG is true
         if (useRAG && documentContext && documentContext.found) {
             systemPrompt += `\n\nDOCUMENT REFERENCES AVAILABLE:\nYou have access to relevant documentation from the organization's knowledge base. When the conversation relates to these documents, incorporate specific details and facts from them naturally into your response. Use these as authoritative references when relevant. If the conversation is NOT related to these documents, provide analysis as usual without forcing connections.\n\nIMPORTANT TAGGING INSTRUCTION:\nWhen you use information directly from the document references, wrap those specific sentences with [RAG_START] and [RAG_END] tags. Only tag complete sentences that are directly based on the document content. Do not tag general knowledge or your own analysis.\n\nExample:\n- General analysis here. [RAG_START]This specific practice is outlined in our documentation.[RAG_END] More general analysis.\n\nDocument Content:\n${documentContext.content}`;
         }
 
-        const userPrompt = `${recentContext}${tagContext ? `Tag hints:\n${tagContext}\n\n` : ''}Write a single-paragraph spoken response to this segment, continuing naturally from the context. Avoid headings, lists, or formatting.${useRAG && documentContext && documentContext.found ? ' When relevant, incorporate specific details from the provided document references.' : ''}\nSegment:\n${text}`;
+        const technicalInstruction = isTechnical
+            ? `This segment is TECHNICAL. Respond with a direct answer, include a concrete code example (fenced with the correct language tag), explain the approach, and call out any important tradeoffs. Be specific and precise.`
+            : `This segment is conversational. Respond as a single clear, flowing paragraph with concrete recommendations inline.`;
+
+        const userPrompt = `${recentContext}${tagContext ? `Tag hints:\n${tagContext}\n\n` : ''}${technicalInstruction}${useRAG && documentContext && documentContext.found ? '\nWhen relevant, incorporate specific details from the provided document references and tag them with [RAG_START]...[RAG_END].' : ''}\n\nMeeting segment to respond to:\n${text}`;
 
         const run = async (settings) => {
-            console.log(`[OK] Calling OpenAI API (model: ${settings.model || agent.settings.model})...`);
+            console.log(`[OK] Calling OpenRouter API (model: ${settings.model || agent.settings.model})...`);
             const startTime = Date.now();
-            const result = await openai.chat.completions.create({
+            const result = await openRouterClient.chat.completions.create({
             ...settings,
                 messages: [ 
                     { role: 'system', content: systemPrompt }, 
@@ -701,9 +1005,8 @@ const analyzeSpokenReply = async (text, roomId, agent = AI_AGENTS.SPOKEN_RESPOND
             completion = await run(agent.settings);
         } catch (e1) {
             console.warn(`[X] Primary model failed, retrying with fallback...`);
-            // Retry once with safer defaults
             try {
-                const safer = { model: 'gpt-4o-mini', temperature: 0.6, max_tokens: 1600 };
+                const safer = { model: 'openai/gpt-4o-mini', temperature: 0.6, max_tokens: 1600 };
                 completion = await run(safer);
             } catch (e2) {
                 console.error(`[X] Fallback model also failed: ${e2.message}`);
@@ -711,7 +1014,7 @@ const analyzeSpokenReply = async (text, roomId, agent = AI_AGENTS.SPOKEN_RESPOND
             }
         }
 
-        const raw = (completion.choices?.[0]?.message?.content || '').replace(/\n+/g, ' ').trim();
+        const raw = (completion.choices?.[0]?.message?.content || '').trim();
         
         // Extract tags
         const detectedTags = tagService.getAllTags(text);
@@ -1094,6 +1397,117 @@ io.on('connection', (socket) => {
           ragTag: null,
           timestamp: new Date().toISOString()
         });
+    }
+  });
+
+  // ── Code Deep Dive ───────────────────────────────────────────────────────
+  socket.on('process_code_deep_dive', async (data) => {
+    const { text, roomId, blockId } = data;
+    const effectiveRoomId = roomId || socket.id;
+    console.log(`[CODE_DEEP_DIVE] Block ${blockId} (room ${effectiveRoomId})`);
+    try {
+      if (!roomContexts.has(effectiveRoomId)) {
+        roomContexts.set(effectiveRoomId, {
+          meetingType: null, participants: new Set(), topics: new Set(),
+          projectsMentioned: new Set(), decisions: [], actionItems: [],
+          tags: new Set(), selectedBucket: null
+        });
+      }
+      const agent = AI_AGENTS.CODE_DEEP_DIVE;
+      const completion = await openRouterClient.chat.completions.create({
+        ...agent.settings,
+        messages: [
+          { role: 'system', content: agent.systemPrompt },
+          { role: 'user', content: `Meeting segment:\n${text}\n\nProvide the full code deep dive response as described.` }
+        ]
+      });
+      const result = (completion.choices?.[0]?.message?.content || '').trim();
+      socket.emit('code_deep_dive_response', {
+        text: result,
+        blockId,
+        timestamp: new Date().toISOString(),
+        agent: agent.name
+      });
+      console.log(`[CODE_DEEP_DIVE] Done for block ${blockId} (${result.length} chars)`);
+    } catch (err) {
+      console.error('[CODE_DEEP_DIVE] Error:', err.message);
+      socket.emit('code_deep_dive_response', {
+        text: `Code Deep Dive unavailable: ${err.message}`,
+        blockId,
+        timestamp: new Date().toISOString(),
+        agent: 'Code Deep Dive',
+        isError: true
+      });
+    }
+  });
+
+  // ── System Design Viewer ─────────────────────────────────────────────────
+  // Counter per room; also store the last design text for the improvement loop
+  const systemDesignCounters = new Map();
+  const systemDesignHistory = new Map(); // roomId -> last design text
+
+  socket.on('process_system_design', async (data) => {
+    const { text, roomId, blockId, recentBlocks = [] } = data;
+    const effectiveRoomId = roomId || socket.id;
+
+    // Maintain counter — emit design on 1st block, then every 3rd
+    const prev = systemDesignCounters.get(effectiveRoomId) || 0;
+    const next = prev + 1;
+    systemDesignCounters.set(effectiveRoomId, next);
+    const shouldGenerate = next === 1 || next % 3 === 0;
+    if (!shouldGenerate) {
+      console.log(`[SYSTEM_DESIGN] Skipping block ${blockId} (counter ${next})`);
+      return;
+    }
+
+    console.log(`[SYSTEM_DESIGN] Generating iteration #${next} for block ${blockId}`);
+
+    // Build cumulative conversation context
+    const conversationContext = recentBlocks.length
+      ? `Recent conversation (most recent last):\n${recentBlocks.slice(-8).map((t, i) => `[${i+1}] ${t}`).join('\n')}\n\nLatest segment:\n${text}`
+      : `Meeting segment:\n${text}`;
+
+    // Fetch previous design for the improvement loop
+    const previousDesign = systemDesignHistory.get(effectiveRoomId);
+    const previousDesignSection = previousDesign
+      ? `\n\n---\nPREVIOUS DESIGN (iteration #${next - 1} — you MUST improve upon this):\n${previousDesign}`
+      : '';
+
+    const userPrompt = `${conversationContext}${previousDesignSection}
+
+Produce iteration #${next} of the system design. ${next > 1 ? 'This must be measurably more complete, more specific, and more technically accurate than the previous design. Explicitly state what improved in the "Improvement Over Previous Design" section.' : 'This is the first design — establish a strong, complete baseline.'}`;
+
+    try {
+      const agent = AI_AGENTS.SYSTEM_DESIGN_VIEWER;
+      const completion = await openRouterClient.chat.completions.create({
+        ...agent.settings,
+        messages: [
+          { role: 'system', content: agent.systemPrompt },
+          { role: 'user', content: userPrompt }
+        ]
+      });
+      const result = (completion.choices?.[0]?.message?.content || '').trim();
+
+      // Store for next iteration's improvement loop
+      systemDesignHistory.set(effectiveRoomId, result);
+
+      socket.emit('system_design_response', {
+        text: result,
+        blockId,
+        timestamp: new Date().toISOString(),
+        agent: agent.name,
+        counter: next
+      });
+      console.log(`[SYSTEM_DESIGN] Iteration #${next} done for block ${blockId} (${result.length} chars)`);
+    } catch (err) {
+      console.error('[SYSTEM_DESIGN] Error:', err.message);
+      socket.emit('system_design_response', {
+        text: `System Design generation unavailable: ${err.message}`,
+        blockId,
+        timestamp: new Date().toISOString(),
+        agent: 'System Design Viewer',
+        isError: true
+      });
     }
   });
 
