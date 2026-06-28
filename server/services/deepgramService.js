@@ -23,7 +23,11 @@ const deepgramConfig = {
   smart_format: true,
   interim_results: true,
   punctuate: true,
-  diarize: true
+  diarize: true,
+  // Semantic endpointing / turn-taking signals (Phase 1)
+  endpointing: 300,       // ms of silence before Deepgram marks speech_final
+  utterance_end_ms: 1000, // emit UtteranceEnd after ~1s gap (needs interim_results)
+  vad_events: true        // emit SpeechStarted events
 };
 
 // Create Deepgram WebSocket stream
@@ -70,21 +74,33 @@ const createDeepgramStream = (socket, roomId) => {
 
           if (channel?.alternatives?.length > 0) {
             const alternative = channel.alternatives[0];
-            
-            // Extract speaker information if available
-            let speakerTag = 0;
-            if (channel.speaker) {
-              speakerTag = parseInt(channel.speaker);
-            }
 
-            // Get word-level information
+            // Get word-level information (diarization puts `speaker` on each word)
             const words = alternative.words || [];
             const wordTimings = words.map(word => ({
               word: word.word,
               start: word.start,
               end: word.end,
-              confidence: word.confidence
+              confidence: word.confidence,
+              speaker: (typeof word.speaker === 'number') ? word.speaker : null
             }));
+
+            // Resolve the turn-level speaker: majority vote across words,
+            // falling back to channel.speaker, then 0.
+            let speakerTag = 0;
+            const speakerCounts = {};
+            for (const w of wordTimings) {
+              if (typeof w.speaker === 'number') {
+                speakerCounts[w.speaker] = (speakerCounts[w.speaker] || 0) + 1;
+              }
+            }
+            const topSpeaker = Object.entries(speakerCounts)
+              .sort((a, b) => b[1] - a[1])[0];
+            if (topSpeaker) {
+              speakerTag = parseInt(topSpeaker[0], 10);
+            } else if (channel.speaker !== undefined && channel.speaker !== null) {
+              speakerTag = parseInt(channel.speaker, 10) || 0;
+            }
 
             const transcriptionResult = {
               text: alternative.transcript,
@@ -115,6 +131,32 @@ const createDeepgramStream = (socket, roomId) => {
             details: error.message,
             service: 'deepgram'
           });
+        }
+      });
+
+      // Handle end-of-turn signal (Phase 1) — fires after utterance_end_ms of silence
+      deepgramLive.addListener(LiveTranscriptionEvents.UtteranceEnd, (data) => {
+        try {
+          socket.emit('utterance_end', {
+            lastWordEnd: data?.last_word_end ?? null,
+            channel: data?.channel ?? null,
+            service: 'deepgram',
+            timestamp: new Date().toISOString()
+          });
+        } catch (err) {
+          console.warn('Error emitting utterance_end:', err);
+        }
+      });
+
+      // Handle VAD speech-start (Phase 1)
+      deepgramLive.addListener(LiveTranscriptionEvents.SpeechStarted, (data) => {
+        try {
+          socket.emit('speech_started', {
+            timestamp: new Date().toISOString(),
+            service: 'deepgram'
+          });
+        } catch (err) {
+          console.warn('Error emitting speech_started:', err);
         }
       });
 
