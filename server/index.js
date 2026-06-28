@@ -15,6 +15,7 @@ const { createDeepgramStream, processAudioData } = require('./services/deepgramS
 const { teamKnowledge } = require('./services/teamKnowledge');
 const { tagService } = require('./services/tagService');
 const documentService = require('./services/documentService');
+const promptProfileService = require('./services/promptProfileService');
 
 // ── OpenRouter client (for AI analysis agents) ───────────────────────────
 // Uses the OpenAI SDK with OpenRouter's base URL so all chat completions
@@ -59,6 +60,34 @@ app.post('/api/process-documents', async (_req, res) => {
   try {
     const result = await documentService.processAllDocuments();
     res.json(result);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ── Dynamic prompt profiles (loaded from GCS) ────────────────────────────
+app.get('/api/prompt-profiles', async (_req, res) => {
+  try {
+    const items = await promptProfileService.listProfiles();
+    res.json({ profiles: items, health: promptProfileService.getHealthStatus() });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get('/api/prompt-profiles/:id', async (req, res) => {
+  try {
+    const profile = await promptProfileService.getProfile(req.params.id);
+    if (!profile) return res.status(404).json({ error: 'Profile not found' });
+    res.json(profile);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/prompt-profiles/refresh', (_req, res) => {
+  try {
+    res.json(promptProfileService.refresh());
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -690,8 +719,10 @@ const analyzeWithAgent = async (text, roomId, agent = AI_AGENTS.MEETING_ANALYST,
                 bucketFilter = process.env.GCS_BUCKET_N1 || 'syncscribe-n1';
             } else if (roomContext.selectedBucket === 'u1') {
                 bucketFilter = process.env.GCS_BUCKET_U1 || 'syncscribe-u1';
+            } else if (roomContext.selectedBucket === 'u2') {
+                bucketFilter = process.env.GCS_BUCKET_U2 || 'syncscribe-u2';
             }
-            // If null, search both buckets (no filter)
+            // If null, search all buckets (no filter)
             
             // Search for relevant documents based on current conversation
             relevantDocs = await documentService.searchDocuments(text, 5, bucketFilter);
@@ -904,9 +935,12 @@ const analyzeSpokenReply = async (text, roomId, agent = AI_AGENTS.SPOKEN_RESPOND
                 } else if (roomContext && roomContext.selectedBucket === 'u1') {
                     bucketFilter = process.env.GCS_BUCKET_U1 || 'syncscribe-u1';
                     console.log(`[OK] Searching U-1 bucket only: ${bucketFilter}`);
+                } else if (roomContext && roomContext.selectedBucket === 'u2') {
+                    bucketFilter = process.env.GCS_BUCKET_U2 || 'syncscribe-u2';
+                    console.log(`[OK] Searching U-2 bucket only: ${bucketFilter}`);
                 } else {
                     bucketFilter = null;
-                    console.log(`[OK] Searching both buckets (no filter)`);
+                    console.log(`[OK] Searching all buckets (no filter)`);
                 }
                 
                 // Search for relevant documents
@@ -968,8 +1002,10 @@ const analyzeSpokenReply = async (text, roomId, agent = AI_AGENTS.SPOKEN_RESPOND
         ];
         const isTechnical = TECHNICAL_SIGNALS.some(re => re.test(text));
 
-        // Build system prompt
-        let systemPrompt = agent.systemPrompt;
+        // Build system prompt (apply dynamic GCloud prompt profile if selected)
+        const activeProfileId = roomContext?.activePromptProfile || null;
+        const activeProfile = activeProfileId ? await promptProfileService.getProfile(activeProfileId) : null;
+        let systemPrompt = promptProfileService.buildSystemPrompt('SPOKEN_RESPONDER', agent.systemPrompt, activeProfile);
         if (lensName) {
             systemPrompt += `\n\nYou are acting with the lens of a ${lensName}. Apply that perspective to your answer.`;
         }
@@ -1250,9 +1286,20 @@ io.on('connection', (socket) => {
     // Explicitly handle useRAG to avoid default value issues
     const useRAG = data.useRAG === true || data.useRAG === 'true' || data.useRAG === 1;
     const { text, roomId, agentType = 'MEETING_ANALYST', blockId } = data;
-    
+    // Phase 2/3: turn + speaker awareness
+    const turnId = data.turnId || blockId;
+    const speakerId = (data.speakerId !== undefined && data.speakerId !== null) ? data.speakerId : null;
+    const displayName = data.displayName || null;
+    const speakerHidden = data.hidden === true || data.hidden === 'true';
+
     // Use socket ID as fallback if roomId is empty
     const effectiveRoomId = roomId || socket.id;
+
+    // Defensive guard: never analyze a hidden speaker, even if the client slips
+    if (speakerHidden) {
+      console.log(`[SERVER] Skipping process_with_ai for hidden speaker ${displayName || speakerId} (turn ${turnId})`);
+      return;
+    }
     
     // Log received data for debugging
     console.log(`\n[SERVER] Received process_with_ai request:`);
@@ -1324,6 +1371,9 @@ io.on('connection', (socket) => {
                     isFormatted: false,
                     isFallback: ragResult.isFallback,
                     blockId,
+                    turnId,
+                    speakerId,
+                    displayName,
                     ragUsed: true,
                     ragSources: ragResult.ragSources,
                     ragTag: '+RAG'
@@ -1340,6 +1390,9 @@ io.on('connection', (socket) => {
                     isFormatted: false,
                     isFallback: true,
                     blockId,
+                    turnId,
+                    speakerId,
+                    displayName,
                     ragUsed: false,
                     ragSources: [],
                     ragTag: null
@@ -1365,6 +1418,9 @@ io.on('connection', (socket) => {
                 isFormatted: false,
                 isFallback: originalResult.isFallback,
                 blockId,
+                turnId,
+                speakerId,
+                displayName,
                 ragUsed: false,
                 ragSources: [],
                 ragTag: null
@@ -1392,6 +1448,10 @@ io.on('connection', (socket) => {
           isFormatted: false,
           agent: 'System',
           analysisType: 'error',
+          blockId,
+          turnId,
+          speakerId,
+          displayName,
           ragUsed: false,
           ragSources: [],
           ragTag: null,
@@ -1414,10 +1474,13 @@ io.on('connection', (socket) => {
         });
       }
       const agent = AI_AGENTS.CODE_DEEP_DIVE;
+      const cddProfileId = roomContexts.get(effectiveRoomId)?.activePromptProfile || null;
+      const cddProfile = cddProfileId ? await promptProfileService.getProfile(cddProfileId) : null;
+      const cddSystemPrompt = promptProfileService.buildSystemPrompt('CODE_DEEP_DIVE', agent.systemPrompt, cddProfile);
       const completion = await openRouterClient.chat.completions.create({
         ...agent.settings,
         messages: [
-          { role: 'system', content: agent.systemPrompt },
+          { role: 'system', content: cddSystemPrompt },
           { role: 'user', content: `Meeting segment:\n${text}\n\nProvide the full code deep dive response as described.` }
         ]
       });
@@ -1479,10 +1542,13 @@ Produce iteration #${next} of the system design. ${next > 1 ? 'This must be meas
 
     try {
       const agent = AI_AGENTS.SYSTEM_DESIGN_VIEWER;
+      const sdvProfileId = roomContexts.get(effectiveRoomId)?.activePromptProfile || null;
+      const sdvProfile = sdvProfileId ? await promptProfileService.getProfile(sdvProfileId) : null;
+      const sdvSystemPrompt = promptProfileService.buildSystemPrompt('SYSTEM_DESIGN_VIEWER', agent.systemPrompt, sdvProfile);
       const completion = await openRouterClient.chat.completions.create({
         ...agent.settings,
         messages: [
-          { role: 'system', content: agent.systemPrompt },
+          { role: 'system', content: sdvSystemPrompt },
           { role: 'user', content: userPrompt }
         ]
       });
@@ -1536,7 +1602,7 @@ Produce iteration #${next} of the system design. ${next > 1 ? 'This must be meas
 
   // Add endpoint to select document bucket for RAG
   socket.on('select_document_bucket', (data) => {
-    const { roomId, bucket } = data; // bucket: 'n1', 'u1', or null for both
+    const { roomId, bucket } = data; // bucket: 'n1', 'u1', 'u2', or null for all
     
     // Use socket ID as fallback if roomId is empty
     const effectiveRoomId = roomId || socket.id;
@@ -1560,10 +1626,34 @@ Produce iteration #${next} of the system design. ${next > 1 ? 'This must be meas
       ? (process.env.GCS_BUCKET_N1 || 'syncscribe-n1')
       : bucket === 'u1'
       ? (process.env.GCS_BUCKET_U1 || 'syncscribe-u1')
-      : 'both';
-    console.log(`[OK] Document bucket set to ${bucketName} (${bucket || 'both'}) for room ${effectiveRoomId}`);
+      : bucket === 'u2'
+      ? (process.env.GCS_BUCKET_U2 || 'syncscribe-u2')
+      : 'all';
+    console.log(`[OK] Document bucket set to ${bucketName} (${bucket || 'all'}) for room ${effectiveRoomId}`);
     console.log(`Room context now has selectedBucket: ${roomContext.selectedBucket}`);
     socket.emit('bucket_selected', { bucket, roomId: effectiveRoomId });
+  });
+
+  // Select dynamic prompt profile (loaded from GCS) for this room
+  socket.on('select_prompt_profile', async (data) => {
+    const { roomId, profileId } = data || {};
+    const effectiveRoomId = roomId || socket.id;
+    if (!roomContexts.has(effectiveRoomId)) {
+      roomContexts.set(effectiveRoomId, {
+        meetingType: null, participants: new Set(), topics: new Set(),
+        projectsMentioned: new Set(), decisions: [], actionItems: [],
+        tags: new Set(), selectedBucket: null
+      });
+    }
+    const roomContext = roomContexts.get(effectiveRoomId);
+    roomContext.activePromptProfile = profileId || null;
+    let profileName = null;
+    if (profileId) {
+      const p = await promptProfileService.getProfile(profileId);
+      profileName = p?.name || profileId;
+    }
+    console.log(`[OK] Prompt profile set to ${profileName || 'default (legacy)'} for room ${effectiveRoomId}`);
+    socket.emit('prompt_profile_selected', { profileId: profileId || null, profileName, roomId: effectiveRoomId });
   });
 
   // Add endpoint to manage tags

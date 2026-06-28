@@ -54,7 +54,10 @@
     "ajv": "^8.18.0",
     "js-yaml": "^4.1.1",
     "fast-xml-parser": "^5.3.8",
-    "hoek": "^6.1.4"
+    "hoek": "^6.1.4",
+    "nodemon": {
+      "minimatch": "^3.1.2"
+    }
   },
   "description": ""
 }

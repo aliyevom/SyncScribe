@@ -13,6 +13,7 @@ class DocumentService {
     this.projectId = process.env.GCS_PROJECT_ID;
     this.bucketN1 = process.env.GCS_BUCKET_N1 || 'syncscribe-n1';
     this.bucketU1 = process.env.GCS_BUCKET_U1 || 'syncscribe-u1';
+    this.bucketU2 = process.env.GCS_BUCKET_U2 || 'syncscribe-u2';
     
     // Initialize GCS client
     try {
@@ -494,6 +495,9 @@ class DocumentService {
       // Process U-1 bucket
       await this.processBucket(this.bucketU1, results);
 
+      // Process U-2 bucket
+      await this.processBucket(this.bucketU2, results);
+
       this.processingState.lastProcessed = new Date().toISOString();
       
       const duration = ((Date.now() - startTime) / 1000).toFixed(2);
@@ -557,7 +561,8 @@ class DocumentService {
         projectId: this.projectId,
         buckets: {
           n1: this.bucketN1,
-          u1: this.bucketU1
+          u1: this.bucketU1,
+          u2: this.bucketU2
         }
       },
       embeddings: {
