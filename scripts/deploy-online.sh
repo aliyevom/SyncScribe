@@ -12,6 +12,7 @@ NC='\033[0m'
 
 VM_NAME="${VM_NAME:-syncscribe-vm}"
 ZONE="${ZONE:-us-central1-a}"
+GCP_PROJECT_ID="${GCP_PROJECT_ID:-}"
 
 # Environment variables for API keys (can be set from GitHub Actions secrets)
 # These will be used to create/update .env file on the VM
@@ -39,7 +40,15 @@ export REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL:-https://syncscribe.app}"
 export REACT_APP_RAG_PASSWORD="${REACT_APP_RAG_PASSWORD:-}"
 
 # Setup SSH options for service account impersonation
+PROJECT_OPT=""
+if [ -n "$GCP_PROJECT_ID" ]; then
+    PROJECT_OPT="--project=$GCP_PROJECT_ID"
+fi
+
 SSH_OPTS="--zone=$ZONE --quiet"
+if [ -n "$PROJECT_OPT" ]; then
+    SSH_OPTS="$SSH_OPTS $PROJECT_OPT"
+fi
 if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
     SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
 fi
@@ -51,11 +60,11 @@ echo ""
 
 # Check VM status and start if needed
 echo -e "${YELLOW}Step 1: Checking VM status...${NC}"
-VM_STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='get(status)')
+VM_STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" $PROJECT_OPT --format='get(status)')
 
 if [ "$VM_STATUS" = "TERMINATED" ] || [ "$VM_STATUS" = "STOPPED" ]; then
     echo -e "${YELLOW}VM is stopped. Starting VM...${NC}"
-    gcloud compute instances start "$VM_NAME" --zone="$ZONE"
+    gcloud compute instances start "$VM_NAME" --zone="$ZONE" $PROJECT_OPT
     echo -e "${YELLOW}Waiting for VM to be ready (30 seconds)...${NC}"
     sleep 30
     echo -e "${GREEN}[OK] VM started${NC}"
@@ -167,6 +176,10 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         export GCS_PRIVATE_KEY=\$(echo '$GCS_PRIVATE_KEY_B64' | base64 -d 2>/dev/null || echo '')
         export REACT_APP_SERVER_URL=\$(echo '$REACT_APP_SERVER_URL_B64' | base64 -d 2>/dev/null || echo 'https://syncscribe.app')
         export REACT_APP_RAG_PASSWORD=\$(echo '$REACT_APP_RAG_PASSWORD_B64' | base64 -d 2>/dev/null || echo '')
+
+        escape_env_value() {
+            printf '%s' \"\$1\" | tr -d '\r' | awk 'BEGIN { first=1 } { gsub(/\"/, \"\\\\\\\"\"); printf \"%s%s\", first ? \"\" : \"\\\\n\", \$0; first=0 }'
+        }
         
         # Ensure git is installed
         if ! command -v git >/dev/null 2>&1; then
@@ -373,9 +386,9 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 [ -n \"\$GCS_BUCKET_U2\" ] && echo \"GCS_BUCKET_U2=\$GCS_BUCKET_U2\" || true
                 [ -n \"\$GCS_PROMPTS_BUCKET\" ] && echo \"GCS_PROMPTS_BUCKET=\$GCS_PROMPTS_BUCKET\" || true
                 [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
-                [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\$GCS_PRIVATE_KEY\" || true
+                [ -n \"\$GCS_PRIVATE_KEY\" ] && printf 'GCS_PRIVATE_KEY=\"%s\"\n' \"\$(escape_env_value \"\$GCS_PRIVATE_KEY\")\" || true
                 [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
-                [ -n \"\$REACT_APP_RAG_PASSWORD\" ] && printf 'REACT_APP_RAG_PASSWORD=%q\n' \"\$REACT_APP_RAG_PASSWORD\" || true
+                [ -n \"\$REACT_APP_RAG_PASSWORD\" ] && printf 'REACT_APP_RAG_PASSWORD=\"%s\"\n' \"\$(escape_env_value \"\$REACT_APP_RAG_PASSWORD\")\" || true
             } > ~/meeting-transcriber/.env &&
             echo '[OK] .env file created from environment variables'
             ENV_CREATED=true
@@ -569,7 +582,7 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
 # Check DNS configuration
 echo ""
 echo -e "${YELLOW}Step 6: Checking DNS configuration...${NC}"
-VM_IP=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+VM_IP=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" $PROJECT_OPT --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
 DNS_IP=$(dig +short syncscribe.app 2>/dev/null | head -1 || echo "")
 
 if [ -n "$DNS_IP" ] && [ "$VM_IP" = "$DNS_IP" ]; then

@@ -188,6 +188,7 @@ jobs:
         env:
           VM_NAME: ${{ env.VM_NAME }}
           ZONE: ${{ env.VM_ZONE }}
+          GCP_PROJECT_ID: ${{ env.GCP_PROJECT_ID }}
           # Use the branch that triggered this workflow (from "Use workflow from" dropdown)
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_WORKSPACE: ${{ github.workspace }}
@@ -223,6 +224,7 @@ jobs:
           echo "Deploying from branch: ${{ github.ref }}"
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
+          export GCP_PROJECT_ID="$GCP_PROJECT_ID"
           export GITHUB_REPOSITORY="$GITHUB_REPOSITORY"
           export GITHUB_WORKSPACE="$GITHUB_WORKSPACE"
           export GITHUB_REF="$GITHUB_REF"
