@@ -225,7 +225,9 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             # Initialize submodules if .gitmodules exists
             if [ -f .gitmodules ]; then
                 echo 'Initializing submodules...' &&
-                git submodule update --init --recursive --depth 1 2>&1 || echo '[X] Submodule init failed, continuing...'
+                git submodule sync --recursive 2>&1 || true &&
+                git submodule update --init --recursive --force client 2>&1 &&
+                git submodule status --recursive
             fi &&
             echo '[OK] Repository cloned'
         else
@@ -238,7 +240,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             git clean -fd 2>&1 || true &&
             # Fetch from origin (without --all to avoid issues)
             echo 'Fetching from origin...' &&
-            git fetch origin 2>&1 || {
+            git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*' 2>&1 || {
                 echo '[X] Git fetch failed, trying to continue...'
             } &&
             # Check if the branch exists on remote
@@ -274,73 +276,12 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             # Update submodules if they exist
             if [ -f .gitmodules ]; then
                 echo 'Updating submodules...' &&
-                # Sync submodule URLs first
                 git submodule sync --recursive 2>&1 || true &&
-                # Get the expected submodule commit from parent repo
-                LS_TREE_OUTPUT=$(git ls-tree HEAD client 2>&1) &&
-                # Extract commit hash (3rd field, but handle both space and tab delimiters)
-                EXPECTED_CLIENT_COMMIT=$(echo "$LS_TREE_OUTPUT" | awk '{print $3}' | grep -E '^[a-f0-9]{40}$' | head -1) &&
-                # Validate it's a commit hash (40 char hex)
-                if [ -n "${EXPECTED_CLIENT_COMMIT}" ] && echo "${EXPECTED_CLIENT_COMMIT}" | grep -qE '^[a-f0-9]{40}$'; then
-                    echo 'Expected client submodule commit: '"${EXPECTED_CLIENT_COMMIT}"
-                else
-                    echo '[X] Invalid or missing client submodule commit. Output was: ['"$LS_TREE_OUTPUT"']' &&
-                    EXPECTED_CLIENT_COMMIT=''
-                fi &&
-                if [ -n "${EXPECTED_CLIENT_COMMIT}" ]; then
-                    # Update submodule to the expected commit
-                    git submodule update --init --recursive --depth 1 2>&1 || {
-                        echo '[X] Standard submodule update failed, trying alternative method...'
-                        # Force update submodules to match parent repo commit
-                        if [ -d client/.git ]; then
-                            echo 'Forcing client submodule to expected commit...' &&
-                            cd client &&
-                            git fetch origin 2>&1 || true &&
-                            git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
-                                echo '[X] Failed to checkout expected commit '$EXPECTED_CLIENT_COMMIT', updating to latest master...'
-                                git fetch origin master 2>&1 || true &&
-                                git checkout master 2>&1 || true &&
-                                git pull origin master 2>&1 || true
-                            } &&
-                            cd ..
-                        elif [ ! -d client ]; then
-                            echo 'Client submodule directory missing, initializing...' &&
-                            git submodule update --init client 2>&1 || true
-                        fi
-                    } &&
-                    # Verify submodule is at correct commit
-                    if [ -d client/.git ]; then
-                        CURRENT_CLIENT_COMMIT=$(cd client && git rev-parse HEAD 2>&1 | tr -d '[:space:]') &&
-                        echo 'Current client submodule commit: '$CURRENT_CLIENT_COMMIT &&
-                        if [ -n "${CURRENT_CLIENT_COMMIT}" ] && [ -n "${EXPECTED_CLIENT_COMMIT}" ] && [ "${CURRENT_CLIENT_COMMIT}" != "${EXPECTED_CLIENT_COMMIT}" ]; then
-                            echo '[X] Client submodule commit mismatch! Expected: '$EXPECTED_CLIENT_COMMIT', Got: '$CURRENT_CLIENT_COMMIT
-                            echo 'Attempting to fix by updating to expected commit...' &&
-                            cd client &&
-                            git fetch origin 2>&1 || true &&
-                            git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
-                                echo '[X] Failed to checkout expected commit, updating to latest master...'
-                                git fetch origin master 2>&1 || true &&
-                                git checkout master 2>&1 || true &&
-                                git pull origin master 2>&1 || true
-                            } &&
-                            cd ..
-                        else
-                            echo '[OK] Client submodule is at correct commit'
-                        fi
-                    fi
-                else
-                    echo '[X] Could not determine expected client submodule commit, updating to latest master...' &&
-                    if [ -d client/.git ]; then
-                        cd client &&
-                        git fetch origin master 2>&1 || true &&
-                        git checkout master 2>&1 || true &&
-                        git pull origin master 2>&1 || true &&
-                        cd ..
-                    elif [ ! -d client ]; then
-                        echo 'Initializing client submodule...' &&
-                        git submodule update --init --recursive client 2>&1 || true
-                    fi
-                fi
+                # Always reset the client folder to the gitlink recorded by this root commit.
+                git submodule deinit -f -- client 2>&1 || true &&
+                rm -rf client &&
+                git submodule update --init --recursive --force client 2>&1 &&
+                git submodule status --recursive
             fi &&
             echo '[OK] Repository updated to branch: '$BRANCH''
         fi &&
