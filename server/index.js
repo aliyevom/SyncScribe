@@ -12,10 +12,12 @@ const {
   openai 
 } = require('./services/speechServices');
 const { createDeepgramStream, processAudioData } = require('./services/deepgramService');
+const { createSpeechmaticsStream } = require('./services/speechmaticsService');
 const { teamKnowledge } = require('./services/teamKnowledge');
 const { tagService } = require('./services/tagService');
 const documentService = require('./services/documentService');
 const promptProfileService = require('./services/promptProfileService');
+const voiceIdentityService = require('./services/voiceIdentityService');
 
 // ── OpenRouter client (for AI analysis agents) ───────────────────────────
 // Uses the OpenAI SDK with OpenRouter's base URL so all chat completions
@@ -44,6 +46,14 @@ app.use(express.json());
 
 // Simple health check for k8s probes
 app.get('/healthz', (_req, res) => res.status(200).send('ok'));
+
+app.get('/api/voice-identity/status', (_req, res) => {
+  try {
+    res.json(voiceIdentityService.getHealthStatus());
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Document service health endpoint
 app.get('/api/document-health', (_req, res) => {
@@ -1116,6 +1126,9 @@ io.on('connection', (socket) => {
       } else if (service === 'deepgram') {
         recognizeStream = createDeepgramStream(socket, roomId);
         activeSessions.set(roomId, recognizeStream);
+      } else if (service === 'speechmatics') {
+        recognizeStream = createSpeechmaticsStream(socket, roomId);
+        activeSessions.set(roomId, recognizeStream);
       }
 
       socket.join(roomId);
@@ -1170,6 +1183,24 @@ io.on('connection', (socket) => {
             }
           } catch (err) {
             console.error('Error forwarding audio to Deepgram:', err);
+          }
+        }
+      } else if (service === 'speechmatics') {
+        const stream = activeSessions.get(roomId);
+        if (stream) {
+          try {
+            const buf = Buffer.from(audio);
+            const MAX_CHUNK = 3200; // 100ms at 16kHz, 16-bit mono (2 bytes/sample)
+            if (buf.length <= MAX_CHUNK) {
+              stream.send(buf);
+            } else {
+              for (let offset = 0; offset < buf.length; offset += MAX_CHUNK) {
+                const chunk = buf.subarray(offset, Math.min(offset + MAX_CHUNK, buf.length));
+                stream.send(chunk);
+              }
+            }
+          } catch (err) {
+            console.error('Error forwarding audio to Speechmatics:', err);
           }
         }
       } else if (service === 'openai') {
@@ -1699,6 +1730,11 @@ const startServer = (port) => {
     .on('listening', () => {
       console.log(`Server running on port ${port}`);
       console.log('Available AI Agents:', Object.keys(AI_AGENTS).join(', '));
+      const voiceIdentity = voiceIdentityService.getHealthStatus();
+      console.log(
+        `Voice identity: ${voiceIdentity.provider}` +
+        ` (configured=${voiceIdentity.configured}, knownSpeakers=${voiceIdentity.speechmatics?.speakerIdentifierCount || 0})`
+      );
     });
 };
 

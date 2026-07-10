@@ -20,6 +20,8 @@ if (process.defaultApp || /[\\/]electron-prebuilt[\\/]/.test(process.execPath) |
   isDev = true;
 }
 
+const shouldStartServer = process.env.SYNCSCRIBE_SKIP_SERVER !== 'true';
+
 function createWindow() {
   // Get window state from store
   const windowState = store.get('windowState', {
@@ -310,12 +312,16 @@ function createMenu() {
 // App event listeners
 app.whenReady().then(() => {
   createMenu();
-  startServer();
+  if (shouldStartServer) {
+    startServer();
+  } else {
+    console.log('Using externally managed SyncScribe server');
+  }
   
   // Wait a moment for server to start, then create window
   setTimeout(() => {
     createWindow();
-  }, 2000);
+  }, shouldStartServer ? 2000 : 0);
 
   app.on('activate', () => {
     // On macOS it's common to re-create a window in the app when the

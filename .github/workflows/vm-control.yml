@@ -19,6 +19,8 @@ name: SyncScribe VM Control
 #    - DEEPGRAM_API_KEY: Your Deepgram API key
 #    - ASSEMBLYAI_API_KEY: Your AssemblyAI API key
 #    - OPENROUTER_API_KEY: Your OpenRouter API key
+#    - SPEECHMATICS_API_KEY: Your Speechmatics API key
+#    - SPEECHMATICS_MY_SPEAKER_IDS: Your enrolled "Me" speaker identifier(s), comma-separated
 #    - GCS_CLIENT_EMAIL: GCS service account email
 #    - GCS_PRIVATE_KEY: GCS service account private key
 #    - GCP_WIF_PROVIDER: Workload Identity Federation provider
@@ -46,14 +48,13 @@ on:
         options:
           - deploy-offline
           - deploy-online
-          - deploy-latest
           - renew-certificate
         default: deploy-online
   schedule:
     # Weekdays at 7:50 AM EST (12:50 UTC during EST, 11:50 UTC during EDT)
     # 7:50 AM EST = 12:50 UTC (during EST) or 11:50 UTC (during EDT)
     # Using 12:50 UTC (will be 7:50 AM EST or 8:50 AM EDT)
-    - cron: '50 12 * * 1-5'  # Monday-Friday at 12:50 UTC (7:50 AM EST / 8:50 AM EDT) - deploy-latest
+    - cron: '50 12 * * 1-5'  # Monday-Friday at 12:50 UTC (7:50 AM EST / 8:50 AM EDT) - deploy-online
     
     # Weekdays at 5:30 PM EST (22:30 UTC during EST, 21:30 UTC during EDT)
     # 5:30 PM EST = 22:30 UTC (during EST) or 21:30 UTC (during EDT)
@@ -143,8 +144,8 @@ jobs:
 
           case "$SCHEDULE" in
             "50 12 * * 1-5")
-              echo "action=deploy-latest" >> "$GITHUB_OUTPUT"
-              echo "Scheduled: deploy-latest (weekday morning - start of workday)"
+              echo "action=deploy-online" >> "$GITHUB_OUTPUT"
+              echo "Scheduled: deploy-online (weekday morning - start of workday)"
               ;;
             "30 22 * * 1-5")
               echo "action=deploy-offline" >> "$GITHUB_OUTPUT"
@@ -197,6 +198,13 @@ jobs:
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
           ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SPEECHMATICS_API_KEY: ${{ secrets.SPEECHMATICS_API_KEY }}
+          SPEECHMATICS_MY_SPEAKER_IDS: ${{ secrets.SPEECHMATICS_MY_SPEAKER_IDS }}
+          SPEECHMATICS_REGION: ${{ vars.SPEECHMATICS_REGION || 'us' }}
+          SPEECHMATICS_RT_URL: ${{ vars.SPEECHMATICS_RT_URL || 'wss://us.rt.speechmatics.com/v2' }}
+          SPEECHMATICS_LANGUAGE: ${{ vars.SPEECHMATICS_LANGUAGE || 'en' }}
+          SPEECHMATICS_MODEL: ${{ vars.SPEECHMATICS_MODEL || 'enhanced' }}
+          SPEECHMATICS_MY_SPEAKER_LABEL: ${{ vars.SPEECHMATICS_MY_SPEAKER_LABEL || 'Me' }}
           # GCS Credentials from Secrets
           GCS_CLIENT_EMAIL: ${{ secrets.GCS_CLIENT_EMAIL }}
           GCS_PRIVATE_KEY: ${{ secrets.GCS_PRIVATE_KEY }}
@@ -224,6 +232,13 @@ jobs:
           export DEEPGRAM_API_KEY="$DEEPGRAM_API_KEY"
           export ASSEMBLYAI_API_KEY="$ASSEMBLYAI_API_KEY"
           export OPENROUTER_API_KEY="$OPENROUTER_API_KEY"
+          export SPEECHMATICS_API_KEY="$SPEECHMATICS_API_KEY"
+          export SPEECHMATICS_MY_SPEAKER_IDS="$SPEECHMATICS_MY_SPEAKER_IDS"
+          export SPEECHMATICS_REGION="$SPEECHMATICS_REGION"
+          export SPEECHMATICS_RT_URL="$SPEECHMATICS_RT_URL"
+          export SPEECHMATICS_LANGUAGE="$SPEECHMATICS_LANGUAGE"
+          export SPEECHMATICS_MODEL="$SPEECHMATICS_MODEL"
+          export SPEECHMATICS_MY_SPEAKER_LABEL="$SPEECHMATICS_MY_SPEAKER_LABEL"
           export GCS_CLIENT_EMAIL="$GCS_CLIENT_EMAIL"
           export GCS_PRIVATE_KEY="$GCS_PRIVATE_KEY"
           export GCS_PROJECT_ID="$GCS_PROJECT_ID"
@@ -236,282 +251,6 @@ jobs:
           # Impersonate VM's service account for SSH access
           export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
           ./scripts/deploy-online.sh
-
-      - name: Show VM status
-        if: always()
-        run: |
-          echo "=== VM Status ==="
-          gcloud compute instances describe "$VM_NAME" \
-            --zone="$VM_ZONE" \
-            --project="$GCP_PROJECT_ID" \
-            --format="table(
-              name,
-              status,
-              networkInterfaces[0].accessConfigs[0].natIP:label=EXTERNAL_IP,
-              machineType.scope(machineTypes):label=MACHINE_TYPE
-            )" || echo "VM not accessible"
-
-      - name: Show container status
-        if: always() && (steps.decide.outputs.action == 'deploy-online' || steps.decide.outputs.action == 'deploy-latest' || steps.decide.outputs.action == 'renew-certificate')
-        env:
-          CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ env.VM_SERVICE_ACCOUNT }}
-        run: |
-          echo "=== Container Status ==="
-          SSH_OPTS="--zone=$VM_ZONE --quiet"
-          if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
-            SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
-          fi
-          if gcloud compute ssh "$VM_NAME" $SSH_OPTS \
-            --project="$GCP_PROJECT_ID" \
-            --command="cd ~/meeting-transcriber && sudo docker-compose ps 2>&1" 2>&1; then
-            echo "[OK] Container status retrieved"
-          else
-            echo "[X] Could not check container status"
-            echo "  This may be due to:"
-            echo "  - VM is still starting up"
-            echo "  - SSH connection issues"
-            echo "  - Missing iam.serviceAccountUser permission"
-          fi
-
-      - name: Run deploy-latest
-        if: steps.decide.outputs.action == 'deploy-latest'
-        env:
-          VM_NAME: ${{ env.VM_NAME }}
-          ZONE: ${{ env.VM_ZONE }}
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_WORKSPACE: ${{ github.workspace }}
-          GITHUB_REF: refs/heads/main
-          DEPLOY_CODE: "true"
-          # API Keys from GitHub Secrets
-          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
-          DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
-          ASSEMBLYAI_API_KEY: ${{ secrets.ASSEMBLYAI_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          # GCS Credentials from Secrets
-          GCS_CLIENT_EMAIL: ${{ secrets.GCS_CLIENT_EMAIL }}
-          GCS_PRIVATE_KEY: ${{ secrets.GCS_PRIVATE_KEY }}
-          # GCS Configuration from Variables
-          GCS_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
-          GCS_BUCKET_N1: ${{ vars.GCS_BUCKET_N1 }}
-          GCS_BUCKET_U1: ${{ vars.GCS_BUCKET_U1 }}
-          GCS_BUCKET_U2: ${{ vars.GCS_BUCKET_U2 }}
-          GCS_PROMPTS_BUCKET: ${{ vars.GCS_PROMPTS_BUCKET }}
-          REACT_APP_SERVER_URL: ${{ vars.REACT_APP_SERVER_URL || 'https://syncscribe.app' }}
-          REACT_APP_RAG_PASSWORD: ${{ secrets.REACT_APP_RAG_PASSWORD }}
-        run: |
-          echo "Running deploy-latest.sh..."
-          echo "Deploying from SyncScribe main branch and Sync-client master branch"
-          export VM_NAME="$VM_NAME"
-          export ZONE="$ZONE"
-          export GITHUB_REPOSITORY="$GITHUB_REPOSITORY"
-          export GITHUB_WORKSPACE="$GITHUB_WORKSPACE"
-          export GITHUB_REF="refs/heads/main"
-          export DEPLOY_CODE="$DEPLOY_CODE"
-          # Export API keys for .env file creation
-          export OPENAI_API_KEY="$OPENAI_API_KEY"
-          export DEEPGRAM_API_KEY="$DEEPGRAM_API_KEY"
-          export ASSEMBLYAI_API_KEY="$ASSEMBLYAI_API_KEY"
-          export OPENROUTER_API_KEY="$OPENROUTER_API_KEY"
-          export GCS_CLIENT_EMAIL="$GCS_CLIENT_EMAIL"
-          export GCS_PRIVATE_KEY="$GCS_PRIVATE_KEY"
-          export GCS_PROJECT_ID="$GCS_PROJECT_ID"
-          export GCS_BUCKET_N1="$GCS_BUCKET_N1"
-          export GCS_BUCKET_U1="$GCS_BUCKET_U1"
-          export GCS_BUCKET_U2="$GCS_BUCKET_U2"
-          export GCS_PROMPTS_BUCKET="$GCS_PROMPTS_BUCKET"
-          export REACT_APP_SERVER_URL="$REACT_APP_SERVER_URL"
-          export REACT_APP_RAG_PASSWORD="$REACT_APP_RAG_PASSWORD"
-          # Impersonate VM's service account for SSH access
-          export CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT="${{ env.VM_SERVICE_ACCOUNT }}"
-          
-          # Check VM status and start if needed (like deploy-online does)
-          echo "Checking VM status..."
-          VM_STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --format='get(status)')
-          if [ "$VM_STATUS" = "TERMINATED" ] || [ "$VM_STATUS" = "STOPPED" ]; then
-            echo "VM is stopped. Starting VM..."
-            gcloud compute instances start "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID"
-            echo "Waiting for VM to be ready (30 seconds)..."
-            sleep 30
-            echo "[OK] VM started"
-          else
-            echo "[OK] VM is already running"
-          fi
-          
-          # Wait for SSH to be ready
-          echo "Waiting for SSH connection..."
-          SSH_READY=false
-          for i in {1..60}; do
-            if timeout 5 gcloud compute ssh "$VM_NAME" --zone="$ZONE" --project="$GCP_PROJECT_ID" --command="echo 'SSH ready'" 2>/dev/null; then
-              SSH_READY=true
-              break
-            fi
-            if [ $((i % 5)) -eq 0 ]; then
-              echo "  Attempt $i/60..."
-            fi
-            sleep 2
-          done
-          
-          if [ "$SSH_READY" = false ]; then
-            echo "[X] Error: Could not establish SSH connection after 2 minutes"
-            exit 1
-          fi
-          
-          # Deploy the exact commit this workflow ran on (deploy-online uses scripts/deploy-online.sh
-          # and does git pull so it gets latest main; deploy-latest runs inline below and must checkout
-          # GITHUB_SHA so the VM builds the same code the runner checked out, not stale origin/main)
-          DEPLOY_REF="${GITHUB_SHA:-origin/main}"
-          
-          # Deploy main repo and update client submodule to master
-          SSH_OPTS="--zone=$ZONE --quiet"
-          if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
-            SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
-          fi
-          
-          # Base64 encode sensitive values for safe SSH transmission
-          OPENAI_API_KEY_B64=$(echo -n "$OPENAI_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$OPENAI_API_KEY" | base64 | tr -d '\n')
-          DEEPGRAM_API_KEY_B64=$(echo -n "$DEEPGRAM_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$DEEPGRAM_API_KEY" | base64 | tr -d '\n')
-          ASSEMBLYAI_API_KEY_B64=$(echo -n "$ASSEMBLYAI_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$ASSEMBLYAI_API_KEY" | base64 | tr -d '\n')
-          OPENROUTER_API_KEY_B64=$(echo -n "$OPENROUTER_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$OPENROUTER_API_KEY" | base64 | tr -d '\n')
-          GCS_CLIENT_EMAIL_B64=$(echo -n "$GCS_CLIENT_EMAIL" | base64 -w 0 2>/dev/null || echo -n "$GCS_CLIENT_EMAIL" | base64 | tr -d '\n')
-          GCS_PRIVATE_KEY_B64=$(echo -n "$GCS_PRIVATE_KEY" | base64 -w 0 2>/dev/null || echo -n "$GCS_PRIVATE_KEY" | base64 | tr -d '\n')
-          
-          gcloud compute ssh "$VM_NAME" $SSH_OPTS --project="$GCP_PROJECT_ID" --command "
-            # Decode environment variables from base64
-            export OPENAI_API_KEY=\$(echo '$OPENAI_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
-            export DEEPGRAM_API_KEY=\$(echo '$DEEPGRAM_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
-            export ASSEMBLYAI_API_KEY=\$(echo '$ASSEMBLYAI_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
-            export OPENROUTER_API_KEY=\$(echo '$OPENROUTER_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
-            export GCS_CLIENT_EMAIL=\$(echo '$GCS_CLIENT_EMAIL_B64' | base64 -d 2>/dev/null || echo '')
-            export GCS_PRIVATE_KEY=\$(echo '$GCS_PRIVATE_KEY_B64' | base64 -d 2>/dev/null || echo '')
-            export GCS_PROJECT_ID='$GCS_PROJECT_ID'
-            export GCS_BUCKET_N1='$GCS_BUCKET_N1'
-            export GCS_BUCKET_U1='$GCS_BUCKET_U1'
-            export GCS_BUCKET_U2='$GCS_BUCKET_U2'
-            export GCS_PROMPTS_BUCKET='$GCS_PROMPTS_BUCKET'
-            export REACT_APP_SERVER_URL='${REACT_APP_SERVER_URL:-https://syncscribe.app}'
-            export REACT_APP_RAG_PASSWORD='${REACT_APP_RAG_PASSWORD:-}'
-            
-            cd ~/meeting-transcriber || mkdir -p ~/meeting-transcriber && cd ~/meeting-transcriber &&
-            
-            # Backup .env if exists
-            if [ -f .env ]; then
-              cp .env ~/.env.backup.\$(date +%s) && echo '[OK] .env backed up'
-            fi &&
-            
-            # Clone or update repository and checkout same commit as this workflow run
-            if [ ! -d .git ]; then
-              echo 'Cloning SyncScribe repository...' &&
-              rm -rf ~/meeting-transcriber/* ~/meeting-transcriber/.* 2>/dev/null || true &&
-              git clone --branch main https://github.com/$GITHUB_REPOSITORY.git ~/meeting-transcriber &&
-              cd ~/meeting-transcriber && git fetch origin main && git checkout $DEPLOY_REF &&
-              echo '[OK] Repository cloned at '$DEPLOY_REF
-            else
-              echo 'Updating SyncScribe to commit '$DEPLOY_REF' (same as this workflow run)...' &&
-              git fetch origin main &&
-              git checkout $DEPLOY_REF && echo '[OK] Checked out '$DEPLOY_REF &&
-              echo '[OK] Repository updated'
-            fi &&
-            
-            # Update client submodule to master branch
-            if [ -f .gitmodules ]; then
-              echo 'Updating client submodule to master branch...' &&
-              git submodule sync --recursive &&
-              git submodule update --init --recursive --depth 1 &&
-              cd client &&
-              git fetch origin master &&
-              git checkout master &&
-              git pull origin master &&
-              cd .. &&
-              echo '[OK] Client submodule updated to master'
-            fi &&
-            
-            # Restore or create .env file (use ls exit code to avoid \"too many arguments\" when glob matches multiple files)
-            if ls -t ~/.env.backup.* 1>/dev/null 2>&1; then
-              LATEST_BACKUP=\$(ls -t ~/.env.backup.* | head -1) &&
-              if [ -n \"\$LATEST_BACKUP\" ]; then
-                cp \"\$LATEST_BACKUP\" .env && echo '[OK] .env restored from backup'
-              fi
-            fi &&
-            
-            # Create/update .env from environment variables (GCS key on one line to avoid source .env parsing errors)
-            GCS_PRIVATE_KEY_ESC=\$(printf '%s' \"\$GCS_PRIVATE_KEY\" | awk 'BEGIN{ORS=\"\\\\n\"} {print}' | sed 's/\\\\n\$//') &&
-            {
-              [ -n \"\$OPENAI_API_KEY\" ] && echo \"OPENAI_API_KEY=\$OPENAI_API_KEY\" || true
-              [ -n \"\$DEEPGRAM_API_KEY\" ] && echo \"DEEPGRAM_API_KEY=\$DEEPGRAM_API_KEY\" || true
-              [ -n \"\$ASSEMBLYAI_API_KEY\" ] && echo \"ASSEMBLYAI_API_KEY=\$ASSEMBLYAI_API_KEY\" || true
-              [ -n \"\$OPENROUTER_API_KEY\" ] && echo \"OPENROUTER_API_KEY=\$OPENROUTER_API_KEY\" || true
-              [ -n \"\$GCS_PROJECT_ID\" ] && echo \"GCS_PROJECT_ID=\$GCS_PROJECT_ID\" || true
-              [ -n \"\$GCS_BUCKET_N1\" ] && echo \"GCS_BUCKET_N1=\$GCS_BUCKET_N1\" || true
-              [ -n \"\$GCS_BUCKET_U1\" ] && echo \"GCS_BUCKET_U1=\$GCS_BUCKET_U1\" || true
-              [ -n \"\$GCS_BUCKET_U2\" ] && echo \"GCS_BUCKET_U2=\$GCS_BUCKET_U2\" || true
-              [ -n \"\$GCS_PROMPTS_BUCKET\" ] && echo \"GCS_PROMPTS_BUCKET=\$GCS_PROMPTS_BUCKET\" || true
-              [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
-              [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\\\"\$GCS_PRIVATE_KEY_ESC\\\"\" || true
-              [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
-            } > .env &&
-            echo '[OK] .env file created/updated' &&
-            
-            # Build and start containers
-            set -a && [ -f .env ] && source .env && set +a &&
-            # Generate build version and timestamp
-            BUILD_VERSION=\"deploy-latest-\$(date +%Y%m%d-%H%M%S)\" &&
-            BUILD_TIMESTAMP=\"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\" &&
-            sudo docker-compose down 2>/dev/null || true &&
-            sudo docker-compose build --no-cache \
-              --build-arg BUILD_VERSION=\"\$BUILD_VERSION\" \
-              --build-arg BUILD_TIMESTAMP=\"\$BUILD_TIMESTAMP\" \
-              --build-arg REACT_APP_SERVER_URL=\"\${REACT_APP_SERVER_URL}\" \
-              --build-arg REACT_APP_RAG_PASSWORD=\"\${REACT_APP_RAG_PASSWORD}\" &&
-            sudo docker-compose up -d &&
-            echo '[OK] Containers started' &&
-            
-            # Fix permissions
-            sleep 5 &&
-            CLIENT_CONTAINER=\$(sudo docker ps -q -f name=client) &&
-            if [ -n \"\$CLIENT_CONTAINER\" ]; then
-              sudo docker exec \"\$CLIENT_CONTAINER\" sh -c '
-                find /usr/share/nginx/html -type f -exec chmod 644 {} \; &&
-                find /usr/share/nginx/html -type d -exec chmod 755 {} \; &&
-                find /usr/share/nginx/html -name \"._*\" -delete &&
-                chmod 644 /usr/share/nginx/html/*.worklet.js 2>/dev/null || true &&
-                chmod 755 /usr/share/nginx/html/images 2>/dev/null || true &&
-                chmod -R 644 /usr/share/nginx/html/images/* 2>/dev/null || true
-              ' && echo '[OK] Permissions fixed'
-            fi &&
-            
-            echo '' &&
-            echo '=== Deployment Summary ===' &&
-            echo 'SyncScribe branch: main' &&
-            echo 'Sync-client branch: master' &&
-            cd client && echo 'Client commit: '\$(git rev-parse HEAD) && cd .. &&
-            echo 'Main repo commit: '\$(git rev-parse HEAD) &&
-            sudo docker-compose ps
-          " || {
-            echo "[X] Deployment failed"
-            exit 1
-          }
-          
-          # Step 5: Verify services are running
-          echo ""
-          echo "Step 5: Verifying services..."
-          sleep 15
-          gcloud compute ssh "$VM_NAME" $SSH_OPTS --project="$GCP_PROJECT_ID" --command "
-            cd ~/meeting-transcriber &&
-            echo '=== Service Status ===' &&
-            sudo docker-compose ps &&
-            echo '' &&
-            echo '=== Health Checks ===' &&
-            echo 'Server health:' &&
-            curl -s http://localhost:5002/healthz && echo '' || echo 'Server not responding' &&
-            echo '' &&
-            echo 'Client (main page):' &&
-            curl -s -I http://localhost:80 | head -3 || echo 'Client not responding'
-          " || echo "[X] Service verification failed"
-          
-          echo ""
-          echo "======================================"
-          echo "  Deployment Complete!"
-          echo "======================================"
 
       - name: Renew SSL Certificate
         if: steps.decide.outputs.action == 'renew-certificate'
@@ -571,7 +310,7 @@ jobs:
             )" || echo "VM not accessible"
 
       - name: Show container status
-        if: always() && (steps.decide.outputs.action == 'deploy-online' || steps.decide.outputs.action == 'deploy-latest' || steps.decide.outputs.action == 'renew-certificate')
+        if: always() && (steps.decide.outputs.action == 'deploy-online' || steps.decide.outputs.action == 'renew-certificate')
         env:
           CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT: ${{ env.VM_SERVICE_ACCOUNT }}
         run: |
@@ -593,7 +332,7 @@ jobs:
           fi
 
       - name: Show DNS status
-        if: always() && (steps.decide.outputs.action == 'deploy-online' || steps.decide.outputs.action == 'deploy-latest' || steps.decide.outputs.action == 'renew-certificate')
+        if: always() && (steps.decide.outputs.action == 'deploy-online' || steps.decide.outputs.action == 'renew-certificate')
         run: |
           echo "=== DNS Status ==="
           VM_IP=$(gcloud compute instances describe "$VM_NAME" \
@@ -616,4 +355,3 @@ jobs:
           else
             echo "Could not determine VM IP"
           fi
-

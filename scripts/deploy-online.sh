@@ -19,6 +19,13 @@ export OPENAI_API_KEY="${OPENAI_API_KEY:-}"
 export DEEPGRAM_API_KEY="${DEEPGRAM_API_KEY:-}"
 export ASSEMBLYAI_API_KEY="${ASSEMBLYAI_API_KEY:-}"
 export OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}"
+export SPEECHMATICS_API_KEY="${SPEECHMATICS_API_KEY:-}"
+export SPEECHMATICS_REGION="${SPEECHMATICS_REGION:-us}"
+export SPEECHMATICS_RT_URL="${SPEECHMATICS_RT_URL:-wss://us.rt.speechmatics.com/v2}"
+export SPEECHMATICS_LANGUAGE="${SPEECHMATICS_LANGUAGE:-en}"
+export SPEECHMATICS_MODEL="${SPEECHMATICS_MODEL:-enhanced}"
+export SPEECHMATICS_MY_SPEAKER_LABEL="${SPEECHMATICS_MY_SPEAKER_LABEL:-Me}"
+export SPEECHMATICS_MY_SPEAKER_IDS="${SPEECHMATICS_MY_SPEAKER_IDS:-}"
 export GCS_PROJECT_ID="${GCS_PROJECT_ID:-}"
 export GCS_BUCKET_N1="${GCS_BUCKET_N1:-}"
 export GCS_BUCKET_U1="${GCS_BUCKET_U1:-}"
@@ -121,6 +128,13 @@ if [ "$DEPLOY_CODE" = "true" ]; then
     DEEPGRAM_API_KEY_B64=$(echo -n "$DEEPGRAM_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$DEEPGRAM_API_KEY" | base64 | tr -d '\n')
     ASSEMBLYAI_API_KEY_B64=$(echo -n "$ASSEMBLYAI_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$ASSEMBLYAI_API_KEY" | base64 | tr -d '\n')
     OPENROUTER_API_KEY_B64=$(echo -n "$OPENROUTER_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$OPENROUTER_API_KEY" | base64 | tr -d '\n')
+    SPEECHMATICS_API_KEY_B64=$(echo -n "$SPEECHMATICS_API_KEY" | base64 -w 0 2>/dev/null || echo -n "$SPEECHMATICS_API_KEY" | base64 | tr -d '\n')
+    SPEECHMATICS_REGION_B64=$(echo -n "$SPEECHMATICS_REGION" | base64 -w 0 2>/dev/null || echo -n "$SPEECHMATICS_REGION" | base64 | tr -d '\n')
+    SPEECHMATICS_RT_URL_B64=$(echo -n "$SPEECHMATICS_RT_URL" | base64 -w 0 2>/dev/null || echo -n "$SPEECHMATICS_RT_URL" | base64 | tr -d '\n')
+    SPEECHMATICS_LANGUAGE_B64=$(echo -n "$SPEECHMATICS_LANGUAGE" | base64 -w 0 2>/dev/null || echo -n "$SPEECHMATICS_LANGUAGE" | base64 | tr -d '\n')
+    SPEECHMATICS_MODEL_B64=$(echo -n "$SPEECHMATICS_MODEL" | base64 -w 0 2>/dev/null || echo -n "$SPEECHMATICS_MODEL" | base64 | tr -d '\n')
+    SPEECHMATICS_MY_SPEAKER_LABEL_B64=$(echo -n "$SPEECHMATICS_MY_SPEAKER_LABEL" | base64 -w 0 2>/dev/null || echo -n "$SPEECHMATICS_MY_SPEAKER_LABEL" | base64 | tr -d '\n')
+    SPEECHMATICS_MY_SPEAKER_IDS_B64=$(echo -n "$SPEECHMATICS_MY_SPEAKER_IDS" | base64 -w 0 2>/dev/null || echo -n "$SPEECHMATICS_MY_SPEAKER_IDS" | base64 | tr -d '\n')
     GCS_PROJECT_ID_B64=$(echo -n "$GCS_PROJECT_ID" | base64 -w 0 2>/dev/null || echo -n "$GCS_PROJECT_ID" | base64 | tr -d '\n')
     GCS_BUCKET_N1_B64=$(echo -n "$GCS_BUCKET_N1" | base64 -w 0 2>/dev/null || echo -n "$GCS_BUCKET_N1" | base64 | tr -d '\n')
     GCS_BUCKET_U1_B64=$(echo -n "$GCS_BUCKET_U1" | base64 -w 0 2>/dev/null || echo -n "$GCS_BUCKET_U1" | base64 | tr -d '\n')
@@ -137,6 +151,13 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         export DEEPGRAM_API_KEY=\$(echo '$DEEPGRAM_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
         export ASSEMBLYAI_API_KEY=\$(echo '$ASSEMBLYAI_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
         export OPENROUTER_API_KEY=\$(echo '$OPENROUTER_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
+        export SPEECHMATICS_API_KEY=\$(echo '$SPEECHMATICS_API_KEY_B64' | base64 -d 2>/dev/null || echo '')
+        export SPEECHMATICS_REGION=\$(echo '$SPEECHMATICS_REGION_B64' | base64 -d 2>/dev/null || echo 'us')
+        export SPEECHMATICS_RT_URL=\$(echo '$SPEECHMATICS_RT_URL_B64' | base64 -d 2>/dev/null || echo 'wss://us.rt.speechmatics.com/v2')
+        export SPEECHMATICS_LANGUAGE=\$(echo '$SPEECHMATICS_LANGUAGE_B64' | base64 -d 2>/dev/null || echo 'en')
+        export SPEECHMATICS_MODEL=\$(echo '$SPEECHMATICS_MODEL_B64' | base64 -d 2>/dev/null || echo 'enhanced')
+        export SPEECHMATICS_MY_SPEAKER_LABEL=\$(echo '$SPEECHMATICS_MY_SPEAKER_LABEL_B64' | base64 -d 2>/dev/null || echo 'Me')
+        export SPEECHMATICS_MY_SPEAKER_IDS=\$(echo '$SPEECHMATICS_MY_SPEAKER_IDS_B64' | base64 -d 2>/dev/null || echo '')
         export GCS_PROJECT_ID=\$(echo '$GCS_PROJECT_ID_B64' | base64 -d 2>/dev/null || echo '')
         export GCS_BUCKET_N1=\$(echo '$GCS_BUCKET_N1_B64' | base64 -d 2>/dev/null || echo '')
         export GCS_BUCKET_U1=\$(echo '$GCS_BUCKET_U1_B64' | base64 -d 2>/dev/null || echo '')
@@ -331,13 +352,21 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         
         # Create/update .env file from environment variables (from GitHub Actions secrets)
         # This allows GitHub Actions to inject API keys without committing them
-        if [ -n \"\$OPENAI_API_KEY\" ] || [ -n \"\$DEEPGRAM_API_KEY\" ] || [ -n \"\$ASSEMBLYAI_API_KEY\" ]; then
+        if [ -n \"\$OPENAI_API_KEY\" ] || [ -n \"\$DEEPGRAM_API_KEY\" ] || [ -n \"\$ASSEMBLYAI_API_KEY\" ] || [ -n \"\$SPEECHMATICS_API_KEY\" ]; then
             echo 'Creating/updating .env file from environment variables...' &&
             {
                 [ -n \"\$OPENAI_API_KEY\" ] && echo \"OPENAI_API_KEY=\$OPENAI_API_KEY\" || true
                 [ -n \"\$DEEPGRAM_API_KEY\" ] && echo \"DEEPGRAM_API_KEY=\$DEEPGRAM_API_KEY\" || true
                 [ -n \"\$ASSEMBLYAI_API_KEY\" ] && echo \"ASSEMBLYAI_API_KEY=\$ASSEMBLYAI_API_KEY\" || true
                 [ -n \"\$OPENROUTER_API_KEY\" ] && echo \"OPENROUTER_API_KEY=\$OPENROUTER_API_KEY\" || true
+                echo \"VOICE_IDENTITY_PROVIDER=speechmatics\"
+                [ -n \"\$SPEECHMATICS_API_KEY\" ] && echo \"SPEECHMATICS_API_KEY=\$SPEECHMATICS_API_KEY\" || true
+                [ -n \"\$SPEECHMATICS_REGION\" ] && echo \"SPEECHMATICS_REGION=\$SPEECHMATICS_REGION\" || echo \"SPEECHMATICS_REGION=us\"
+                [ -n \"\$SPEECHMATICS_RT_URL\" ] && echo \"SPEECHMATICS_RT_URL=\$SPEECHMATICS_RT_URL\" || echo \"SPEECHMATICS_RT_URL=wss://us.rt.speechmatics.com/v2\"
+                [ -n \"\$SPEECHMATICS_LANGUAGE\" ] && echo \"SPEECHMATICS_LANGUAGE=\$SPEECHMATICS_LANGUAGE\" || echo \"SPEECHMATICS_LANGUAGE=en\"
+                [ -n \"\$SPEECHMATICS_MODEL\" ] && echo \"SPEECHMATICS_MODEL=\$SPEECHMATICS_MODEL\" || echo \"SPEECHMATICS_MODEL=enhanced\"
+                [ -n \"\$SPEECHMATICS_MY_SPEAKER_LABEL\" ] && echo \"SPEECHMATICS_MY_SPEAKER_LABEL=\$SPEECHMATICS_MY_SPEAKER_LABEL\" || echo \"SPEECHMATICS_MY_SPEAKER_LABEL=Me\"
+                [ -n \"\$SPEECHMATICS_MY_SPEAKER_IDS\" ] && echo \"SPEECHMATICS_MY_SPEAKER_IDS=\$SPEECHMATICS_MY_SPEAKER_IDS\" || true
                 [ -n \"\$GCS_PROJECT_ID\" ] && echo \"GCS_PROJECT_ID=\$GCS_PROJECT_ID\" || true
                 [ -n \"\$GCS_BUCKET_N1\" ] && echo \"GCS_BUCKET_N1=\$GCS_BUCKET_N1\" || true
                 [ -n \"\$GCS_BUCKET_U1\" ] && echo \"GCS_BUCKET_U1=\$GCS_BUCKET_U1\" || true
@@ -367,7 +396,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 echo '[OK] .env file exists and has content'
                 # Show which keys are set (without revealing values)
                 echo 'Environment variables in .env:'
-                grep -E '^(OPENAI_API_KEY|DEEPGRAM_API_KEY|ASSEMBLYAI_API_KEY|REACT_APP_SERVER_URL)=' ~/meeting-transcriber/.env | sed 's/=.*/=***/' || true
+                grep -E '^(OPENAI_API_KEY|DEEPGRAM_API_KEY|ASSEMBLYAI_API_KEY|SPEECHMATICS_API_KEY|SPEECHMATICS_MY_SPEAKER_IDS|VOICE_IDENTITY_PROVIDER|REACT_APP_SERVER_URL)=' ~/meeting-transcriber/.env | sed 's/=.*/=***/' || true
             else
                 echo '[X] .env file exists but appears empty or incomplete'
             fi
@@ -375,7 +404,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             echo '[X] WARNING: .env file not found - API keys are missing!'
             echo '   The application will not work without API keys.'
             echo ''
-            if [ -n \"\$OPENAI_API_KEY\" ] || [ -n \"\$DEEPGRAM_API_KEY\" ] || [ -n \"\$ASSEMBLYAI_API_KEY\" ]; then
+            if [ -n \"\$OPENAI_API_KEY\" ] || [ -n \"\$DEEPGRAM_API_KEY\" ] || [ -n \"\$ASSEMBLYAI_API_KEY\" ] || [ -n \"\$SPEECHMATICS_API_KEY\" ]; then
                 echo '   Environment variables were provided but .env file creation failed.'
                 echo '   This may be a permissions issue.'
             else
@@ -385,6 +414,8 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 echo '      - OPENAI_API_KEY'
                 echo '      - DEEPGRAM_API_KEY'
                 echo '      - ASSEMBLYAI_API_KEY'
+                echo '      - SPEECHMATICS_API_KEY'
+                echo '      - SPEECHMATICS_MY_SPEAKER_IDS'
                 echo '   2. Or manually create ~/meeting-transcriber/.env with required variables'
             fi
         fi
@@ -576,4 +607,3 @@ echo "  https://syncscribe.app"
 echo ""
 echo -e "${GREEN}All services are running with correct permissions${NC}"
 echo ""
-
