@@ -84,6 +84,7 @@ env.example
 server/key.json
 client/key.json
 k8s/secret.yaml
+sample/
 Archive.zip
 .env
 deployment-info.txt
