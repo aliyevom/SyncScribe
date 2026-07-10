@@ -34,8 +34,8 @@ export GCS_PROMPTS_BUCKET="${GCS_PROMPTS_BUCKET:-}"
 export GCS_CLIENT_EMAIL="${GCS_CLIENT_EMAIL:-}"
 export GCS_PRIVATE_KEY="${GCS_PRIVATE_KEY:-}"
 export REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL:-https://syncscribe.app}"
-# Note: REACT_APP_RAG_PASSWORD is excluded to disable password gate in production
-# Unless explicitly provided via CI env var for a specific environment
+# Optional frontend build-time password for Document-Enhanced AI Analysis.
+# Persist it into the VM .env when provided so the later Docker build SSH step can read it.
 export REACT_APP_RAG_PASSWORD="${REACT_APP_RAG_PASSWORD:-}"
 
 # Setup SSH options for service account impersonation
@@ -375,7 +375,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
                 [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\$GCS_PRIVATE_KEY\" || true
                 [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
-                # Don't add REACT_APP_RAG_PASSWORD to .env file (it's a build arg)
+                [ -n \"\$REACT_APP_RAG_PASSWORD\" ] && printf 'REACT_APP_RAG_PASSWORD=%q\n' \"\$REACT_APP_RAG_PASSWORD\" || true
             } > ~/meeting-transcriber/.env &&
             echo '[OK] .env file created from environment variables'
             ENV_CREATED=true
@@ -396,7 +396,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 echo '[OK] .env file exists and has content'
                 # Show which keys are set (without revealing values)
                 echo 'Environment variables in .env:'
-                grep -E '^(OPENAI_API_KEY|DEEPGRAM_API_KEY|ASSEMBLYAI_API_KEY|SPEECHMATICS_API_KEY|SPEECHMATICS_MY_SPEAKER_IDS|VOICE_IDENTITY_PROVIDER|REACT_APP_SERVER_URL)=' ~/meeting-transcriber/.env | sed 's/=.*/=***/' || true
+                grep -E '^(OPENAI_API_KEY|DEEPGRAM_API_KEY|ASSEMBLYAI_API_KEY|SPEECHMATICS_API_KEY|SPEECHMATICS_MY_SPEAKER_IDS|VOICE_IDENTITY_PROVIDER|REACT_APP_SERVER_URL|REACT_APP_RAG_PASSWORD)=' ~/meeting-transcriber/.env | sed 's/=.*/=***/' || true
             else
                 echo '[X] .env file exists but appears empty or incomplete'
             fi
@@ -479,6 +479,7 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     # Generate build version and timestamp
     BUILD_VERSION="deploy-online-$(date +%Y%m%d-%H%M%S)"
     BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "REACT_APP_RAG_PASSWORD is set: $([ -n "${REACT_APP_RAG_PASSWORD}" ] && echo "yes" || echo "no")" &&
     # Pass build arguments explicitly
     if ! sudo docker-compose build --no-cache \
         --build-arg BUILD_VERSION="${BUILD_VERSION}" \
