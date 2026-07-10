@@ -12,6 +12,7 @@ NC='\033[0m'
 
 VM_NAME="${VM_NAME:-syncscribe-vm}"
 ZONE="${ZONE:-us-central1-a}"
+GCP_PROJECT_ID="${GCP_PROJECT_ID:-}"
 
 # Environment variables for API keys (can be set from GitHub Actions secrets)
 # These will be used to create/update .env file on the VM
@@ -34,12 +35,20 @@ export GCS_PROMPTS_BUCKET="${GCS_PROMPTS_BUCKET:-}"
 export GCS_CLIENT_EMAIL="${GCS_CLIENT_EMAIL:-}"
 export GCS_PRIVATE_KEY="${GCS_PRIVATE_KEY:-}"
 export REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL:-https://syncscribe.app}"
-# Note: REACT_APP_RAG_PASSWORD is excluded to disable password gate in production
-# Unless explicitly provided via CI env var for a specific environment
+# Optional frontend build-time password for Document-Enhanced AI Analysis.
+# Persist it into the VM .env when provided so the later Docker build SSH step can read it.
 export REACT_APP_RAG_PASSWORD="${REACT_APP_RAG_PASSWORD:-}"
 
 # Setup SSH options for service account impersonation
+PROJECT_OPT=""
+if [ -n "$GCP_PROJECT_ID" ]; then
+    PROJECT_OPT="--project=$GCP_PROJECT_ID"
+fi
+
 SSH_OPTS="--zone=$ZONE --quiet"
+if [ -n "$PROJECT_OPT" ]; then
+    SSH_OPTS="$SSH_OPTS $PROJECT_OPT"
+fi
 if [ -n "$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT" ]; then
     SSH_OPTS="$SSH_OPTS --impersonate-service-account=$CLOUDSDK_AUTH_IMPERSONATE_SERVICE_ACCOUNT"
 fi
@@ -51,11 +60,11 @@ echo ""
 
 # Check VM status and start if needed
 echo -e "${YELLOW}Step 1: Checking VM status...${NC}"
-VM_STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='get(status)')
+VM_STATUS=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" $PROJECT_OPT --format='get(status)')
 
 if [ "$VM_STATUS" = "TERMINATED" ] || [ "$VM_STATUS" = "STOPPED" ]; then
     echo -e "${YELLOW}VM is stopped. Starting VM...${NC}"
-    gcloud compute instances start "$VM_NAME" --zone="$ZONE"
+    gcloud compute instances start "$VM_NAME" --zone="$ZONE" $PROJECT_OPT
     echo -e "${YELLOW}Waiting for VM to be ready (30 seconds)...${NC}"
     sleep 30
     echo -e "${GREEN}[OK] VM started${NC}"
@@ -167,6 +176,10 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         export GCS_PRIVATE_KEY=\$(echo '$GCS_PRIVATE_KEY_B64' | base64 -d 2>/dev/null || echo '')
         export REACT_APP_SERVER_URL=\$(echo '$REACT_APP_SERVER_URL_B64' | base64 -d 2>/dev/null || echo 'https://syncscribe.app')
         export REACT_APP_RAG_PASSWORD=\$(echo '$REACT_APP_RAG_PASSWORD_B64' | base64 -d 2>/dev/null || echo '')
+
+        escape_env_value() {
+            printf '%s' \"\$1\" | tr -d '\r' | awk 'BEGIN { first=1 } { gsub(/\"/, \"\\\\\\\"\"); printf \"%s%s\", first ? \"\" : \"\\\\n\", \$0; first=0 }'
+        }
         
         # Ensure git is installed
         if ! command -v git >/dev/null 2>&1; then
@@ -212,7 +225,9 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             # Initialize submodules if .gitmodules exists
             if [ -f .gitmodules ]; then
                 echo 'Initializing submodules...' &&
-                git submodule update --init --recursive --depth 1 2>&1 || echo '[X] Submodule init failed, continuing...'
+                git submodule sync --recursive 2>&1 || true &&
+                git submodule update --init --recursive --force client 2>&1 &&
+                git submodule status --recursive
             fi &&
             echo '[OK] Repository cloned'
         else
@@ -225,7 +240,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             git clean -fd 2>&1 || true &&
             # Fetch from origin (without --all to avoid issues)
             echo 'Fetching from origin...' &&
-            git fetch origin 2>&1 || {
+            git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*' 2>&1 || {
                 echo '[X] Git fetch failed, trying to continue...'
             } &&
             # Check if the branch exists on remote
@@ -261,73 +276,12 @@ if [ "$DEPLOY_CODE" = "true" ]; then
             # Update submodules if they exist
             if [ -f .gitmodules ]; then
                 echo 'Updating submodules...' &&
-                # Sync submodule URLs first
                 git submodule sync --recursive 2>&1 || true &&
-                # Get the expected submodule commit from parent repo
-                LS_TREE_OUTPUT=$(git ls-tree HEAD client 2>&1) &&
-                # Extract commit hash (3rd field, but handle both space and tab delimiters)
-                EXPECTED_CLIENT_COMMIT=$(echo "$LS_TREE_OUTPUT" | awk '{print $3}' | grep -E '^[a-f0-9]{40}$' | head -1) &&
-                # Validate it's a commit hash (40 char hex)
-                if [ -n "${EXPECTED_CLIENT_COMMIT}" ] && echo "${EXPECTED_CLIENT_COMMIT}" | grep -qE '^[a-f0-9]{40}$'; then
-                    echo 'Expected client submodule commit: '"${EXPECTED_CLIENT_COMMIT}"
-                else
-                    echo '[X] Invalid or missing client submodule commit. Output was: ['"$LS_TREE_OUTPUT"']' &&
-                    EXPECTED_CLIENT_COMMIT=''
-                fi &&
-                if [ -n "${EXPECTED_CLIENT_COMMIT}" ]; then
-                    # Update submodule to the expected commit
-                    git submodule update --init --recursive --depth 1 2>&1 || {
-                        echo '[X] Standard submodule update failed, trying alternative method...'
-                        # Force update submodules to match parent repo commit
-                        if [ -d client/.git ]; then
-                            echo 'Forcing client submodule to expected commit...' &&
-                            cd client &&
-                            git fetch origin 2>&1 || true &&
-                            git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
-                                echo '[X] Failed to checkout expected commit '$EXPECTED_CLIENT_COMMIT', updating to latest master...'
-                                git fetch origin master 2>&1 || true &&
-                                git checkout master 2>&1 || true &&
-                                git pull origin master 2>&1 || true
-                            } &&
-                            cd ..
-                        elif [ ! -d client ]; then
-                            echo 'Client submodule directory missing, initializing...' &&
-                            git submodule update --init client 2>&1 || true
-                        fi
-                    } &&
-                    # Verify submodule is at correct commit
-                    if [ -d client/.git ]; then
-                        CURRENT_CLIENT_COMMIT=$(cd client && git rev-parse HEAD 2>&1 | tr -d '[:space:]') &&
-                        echo 'Current client submodule commit: '$CURRENT_CLIENT_COMMIT &&
-                        if [ -n "${CURRENT_CLIENT_COMMIT}" ] && [ -n "${EXPECTED_CLIENT_COMMIT}" ] && [ "${CURRENT_CLIENT_COMMIT}" != "${EXPECTED_CLIENT_COMMIT}" ]; then
-                            echo '[X] Client submodule commit mismatch! Expected: '$EXPECTED_CLIENT_COMMIT', Got: '$CURRENT_CLIENT_COMMIT
-                            echo 'Attempting to fix by updating to expected commit...' &&
-                            cd client &&
-                            git fetch origin 2>&1 || true &&
-                            git checkout '$EXPECTED_CLIENT_COMMIT' 2>&1 || {
-                                echo '[X] Failed to checkout expected commit, updating to latest master...'
-                                git fetch origin master 2>&1 || true &&
-                                git checkout master 2>&1 || true &&
-                                git pull origin master 2>&1 || true
-                            } &&
-                            cd ..
-                        else
-                            echo '[OK] Client submodule is at correct commit'
-                        fi
-                    fi
-                else
-                    echo '[X] Could not determine expected client submodule commit, updating to latest master...' &&
-                    if [ -d client/.git ]; then
-                        cd client &&
-                        git fetch origin master 2>&1 || true &&
-                        git checkout master 2>&1 || true &&
-                        git pull origin master 2>&1 || true &&
-                        cd ..
-                    elif [ ! -d client ]; then
-                        echo 'Initializing client submodule...' &&
-                        git submodule update --init --recursive client 2>&1 || true
-                    fi
-                fi
+                # Always reset the client folder to the gitlink recorded by this root commit.
+                git submodule deinit -f -- client 2>&1 || true &&
+                rm -rf client &&
+                git submodule update --init --recursive --force client 2>&1 &&
+                git submodule status --recursive
             fi &&
             echo '[OK] Repository updated to branch: '$BRANCH''
         fi &&
@@ -373,9 +327,9 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 [ -n \"\$GCS_BUCKET_U2\" ] && echo \"GCS_BUCKET_U2=\$GCS_BUCKET_U2\" || true
                 [ -n \"\$GCS_PROMPTS_BUCKET\" ] && echo \"GCS_PROMPTS_BUCKET=\$GCS_PROMPTS_BUCKET\" || true
                 [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
-                [ -n \"\$GCS_PRIVATE_KEY\" ] && echo \"GCS_PRIVATE_KEY=\$GCS_PRIVATE_KEY\" || true
+                [ -n \"\$GCS_PRIVATE_KEY\" ] && printf 'GCS_PRIVATE_KEY=\"%s\"\n' \"\$(escape_env_value \"\$GCS_PRIVATE_KEY\")\" || true
                 [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
-                # Don't add REACT_APP_RAG_PASSWORD to .env file (it's a build arg)
+                [ -n \"\$REACT_APP_RAG_PASSWORD\" ] && printf 'REACT_APP_RAG_PASSWORD=\"%s\"\n' \"\$(escape_env_value \"\$REACT_APP_RAG_PASSWORD\")\" || true
             } > ~/meeting-transcriber/.env &&
             echo '[OK] .env file created from environment variables'
             ENV_CREATED=true
@@ -396,7 +350,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 echo '[OK] .env file exists and has content'
                 # Show which keys are set (without revealing values)
                 echo 'Environment variables in .env:'
-                grep -E '^(OPENAI_API_KEY|DEEPGRAM_API_KEY|ASSEMBLYAI_API_KEY|SPEECHMATICS_API_KEY|SPEECHMATICS_MY_SPEAKER_IDS|VOICE_IDENTITY_PROVIDER|REACT_APP_SERVER_URL)=' ~/meeting-transcriber/.env | sed 's/=.*/=***/' || true
+                grep -E '^(OPENAI_API_KEY|DEEPGRAM_API_KEY|ASSEMBLYAI_API_KEY|SPEECHMATICS_API_KEY|SPEECHMATICS_MY_SPEAKER_IDS|VOICE_IDENTITY_PROVIDER|REACT_APP_SERVER_URL|REACT_APP_RAG_PASSWORD)=' ~/meeting-transcriber/.env | sed 's/=.*/=***/' || true
             else
                 echo '[X] .env file exists but appears empty or incomplete'
             fi
@@ -479,6 +433,7 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     # Generate build version and timestamp
     BUILD_VERSION="deploy-online-$(date +%Y%m%d-%H%M%S)"
     BUILD_TIMESTAMP="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "REACT_APP_RAG_PASSWORD is set: $([ -n "${REACT_APP_RAG_PASSWORD}" ] && echo "yes" || echo "no")" &&
     # Pass build arguments explicitly
     if ! sudo docker-compose build --no-cache \
         --build-arg BUILD_VERSION="${BUILD_VERSION}" \
@@ -568,7 +523,7 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
 # Check DNS configuration
 echo ""
 echo -e "${YELLOW}Step 6: Checking DNS configuration...${NC}"
-VM_IP=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
+VM_IP=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" $PROJECT_OPT --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
 DNS_IP=$(dig +short syncscribe.app 2>/dev/null | head -1 || echo "")
 
 if [ -n "$DNS_IP" ] && [ "$VM_IP" = "$DNS_IP" ]; then
