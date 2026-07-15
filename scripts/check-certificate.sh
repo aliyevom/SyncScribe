@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Check SSL certificate status for syncscribe.app
+# Check SSL certificate status for the production app domain
 # This script checks the certificate expiration locally
 
 set -e
 
-DOMAIN="${1:-syncscribe.app}"
+DOMAIN="${1:-voiceido.com}"
 
 echo "======================================"
 echo "  SSL Certificate Status Check"

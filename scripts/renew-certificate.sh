@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# Renew SSL certificate for syncscribe.app
+# Renew SSL certificate for the production app domain
 # This script renews the Let's Encrypt certificate and restarts containers
 # Run this script on the VM where the certificate is installed
 
@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-DOMAIN="${1:-syncscribe.app}"
+DOMAIN="${1:-voiceido.com}"
 
 echo -e "${BLUE}======================================${NC}"
 echo -e "${BLUE}  SSL Certificate Renewal${NC}"
@@ -65,7 +65,7 @@ else
     echo -e "${YELLOW}Standard renewal failed, attempting force renewal...${NC}"
     
     # Get email from existing certificate or use default
-    CERT_EMAIL=$(sudo certbot certificates 2>/dev/null | grep -A 5 "$DOMAIN" | grep 'Account Email' | awk '{print $3}' | head -1 || echo 'admin@syncscribe.app')
+    CERT_EMAIL=$(sudo certbot certificates 2>/dev/null | grep -A 5 "$DOMAIN" | grep 'Account Email' | awk '{print $3}' | head -1 || echo "admin@$DOMAIN")
     
     # Try to obtain a new certificate with force renewal
     if sudo certbot certonly --standalone \

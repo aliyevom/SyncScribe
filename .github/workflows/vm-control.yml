@@ -10,7 +10,11 @@ name: SyncScribe VM Control
 # 1. Add GitHub Repository Variables (Settings > Secrets and variables > Actions > Variables):
 #    - VM_NAME: syncscribe-vm (optional, has default)
 #    - VM_ZONE: us-central1-a (optional, has default)
-#    - REACT_APP_SERVER_URL: https://syncscribe.app (optional, has default)
+#    - APP_DOMAIN: voiceido.com (optional, has default)
+#    - APP_WWW_DOMAIN: www.voiceido.com (optional, has default)
+#    - LEGACY_DOMAIN: syncscribe.app (optional, has default)
+#    - CERTBOT_EMAIL: admin@voiceido.com (optional, has default)
+#    - REACT_APP_SERVER_URL: https://voiceido.com (optional, has default)
 #    - GCS_BUCKET_N1: syncscribe-n1 (REQUIRED - update from old GCS_NG_BUCKET)
 #    - GCS_BUCKET_U1: syncscribe-u1 (REQUIRED - update from old GCS_UKG_BUCKET)
 #
@@ -216,7 +220,11 @@ jobs:
           GCS_BUCKET_U1: ${{ vars.GCS_BUCKET_U1 }}
           GCS_BUCKET_U2: ${{ vars.GCS_BUCKET_U2 }}
           GCS_PROMPTS_BUCKET: ${{ vars.GCS_PROMPTS_BUCKET }}
-          REACT_APP_SERVER_URL: ${{ vars.REACT_APP_SERVER_URL || 'https://syncscribe.app' }}
+          APP_DOMAIN: ${{ vars.APP_DOMAIN || 'voiceido.com' }}
+          APP_WWW_DOMAIN: ${{ vars.APP_WWW_DOMAIN || 'www.voiceido.com' }}
+          LEGACY_DOMAIN: ${{ vars.LEGACY_DOMAIN || 'syncscribe.app' }}
+          CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL || 'admin@voiceido.com' }}
+          REACT_APP_SERVER_URL: ${{ vars.REACT_APP_SERVER_URL || 'https://voiceido.com' }}
           # Optional: Set RAG password for specific environments via secrets
           REACT_APP_RAG_PASSWORD: ${{ secrets.REACT_APP_RAG_PASSWORD }}
         run: |
@@ -248,6 +256,10 @@ jobs:
           export GCS_BUCKET_U1="$GCS_BUCKET_U1"
           export GCS_BUCKET_U2="$GCS_BUCKET_U2"
           export GCS_PROMPTS_BUCKET="$GCS_PROMPTS_BUCKET"
+          export APP_DOMAIN="$APP_DOMAIN"
+          export APP_WWW_DOMAIN="$APP_WWW_DOMAIN"
+          export LEGACY_DOMAIN="$LEGACY_DOMAIN"
+          export CERTBOT_EMAIL="$CERTBOT_EMAIL"
           export REACT_APP_SERVER_URL="$REACT_APP_SERVER_URL"
           export REACT_APP_RAG_PASSWORD="$REACT_APP_RAG_PASSWORD"
           # Impersonate VM's service account for SSH access
@@ -261,7 +273,8 @@ jobs:
           ZONE: ${{ env.VM_ZONE }}
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         run: |
-          echo "Renewing SSL certificate for syncscribe.app..."
+          APP_DOMAIN="${{ vars.APP_DOMAIN || 'voiceido.com' }}"
+          echo "Renewing SSL certificate for $APP_DOMAIN..."
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
           export GCP_PROJECT_ID="$GCP_PROJECT_ID"
@@ -287,7 +300,7 @@ jobs:
           
           gcloud compute ssh "$VM_NAME" $SSH_OPTS \
             --project="$GCP_PROJECT_ID" \
-            --command="chmod +x ~/renew-cert.sh && ~/renew-cert.sh syncscribe.app" || {
+            --command="chmod +x ~/renew-cert.sh && ~/renew-cert.sh $APP_DOMAIN" || {
             echo "[X] Certificate renewal failed"
             exit 1
           }
@@ -344,15 +357,16 @@ jobs:
           
           if [ -n "$VM_IP" ]; then
             echo "VM IP: $VM_IP"
-            DNS_IP=$(dig +short syncscribe.app 2>/dev/null | head -1 || echo "")
+            APP_DOMAIN="${{ vars.APP_DOMAIN || 'voiceido.com' }}"
+            DNS_IP=$(dig +short "$APP_DOMAIN" 2>/dev/null | head -1 || echo "")
             if [ -n "$DNS_IP" ]; then
               if [ "$VM_IP" = "$DNS_IP" ]; then
-                echo "DNS: $DNS_IP (matches VM IP)"
+                echo "DNS: $APP_DOMAIN -> $DNS_IP (matches VM IP)"
               else
-                echo "DNS: $DNS_IP (mismatch - update DNS to $VM_IP)"
+                echo "DNS: $APP_DOMAIN -> $DNS_IP (mismatch - update DNS to $VM_IP)"
               fi
             else
-              echo "DNS: Could not resolve syncscribe.app"
+              echo "DNS: Could not resolve $APP_DOMAIN"
             fi
           else
             echo "Could not determine VM IP"

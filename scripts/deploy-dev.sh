@@ -50,7 +50,7 @@ if [ -f "client/key.json" ]; then
 fi
 
 # Add build-time variables
-echo "REACT_APP_SERVER_URL=https://syncscribe.app" >> .env.deploy
+echo "REACT_APP_SERVER_URL=https://voiceido.com" >> .env.deploy
 echo "REACT_APP_RAG_PASSWORD=apple" >> .env.deploy
 
 TMP_ARCHIVE="/tmp/syncscribe-dev-$(date +%s).tar.gz"
@@ -144,8 +144,7 @@ echo -e "${GREEN}  Development Deployment Complete!${NC}"
 echo -e "${GREEN}=====================================${NC}"
 echo ""
 echo -e "${BLUE}Your application is available at:${NC}"
-echo "  https://syncscribe.app"
+echo "  https://voiceido.com"
 echo ""
 echo -e "${YELLOW}You can now check page source and view changes${NC}"
 echo ""
-
