@@ -33,6 +33,7 @@ services:
       - GCS_PRIVATE_KEY=${GCS_PRIVATE_KEY}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL}
       - EMBEDDING_DIMENSIONS=${EMBEDDING_DIMENSIONS}
+      - REACT_APP_SERVER_URL=${REACT_APP_SERVER_URL:-https://voiceido.com}
     volumes:
       - ./server/team-data.json:/app/server/team-data.json:ro
       - ./server/meeting-tags.json:/app/server/meeting-tags.json:ro
@@ -52,7 +53,7 @@ services:
       context: .
       dockerfile: Dockerfile.client.docker
       args:
-        - REACT_APP_SERVER_URL=${REACT_APP_SERVER_URL:-http://localhost:5002}
+        - REACT_APP_SERVER_URL=${REACT_APP_SERVER_URL:-https://voiceido.com}
         - REACT_APP_RAG_PASSWORD=${REACT_APP_RAG_PASSWORD}
     container_name: syncscribe-client
     ports:

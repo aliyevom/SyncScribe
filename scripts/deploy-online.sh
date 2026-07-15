@@ -13,6 +13,10 @@ NC='\033[0m'
 VM_NAME="${VM_NAME:-syncscribe-vm}"
 ZONE="${ZONE:-us-central1-a}"
 GCP_PROJECT_ID="${GCP_PROJECT_ID:-}"
+APP_DOMAIN="${APP_DOMAIN:-voiceido.com}"
+APP_WWW_DOMAIN="${APP_WWW_DOMAIN:-www.$APP_DOMAIN}"
+LEGACY_DOMAIN="${LEGACY_DOMAIN:-syncscribe.app}"
+CERTBOT_EMAIL="${CERTBOT_EMAIL:-admin@$APP_DOMAIN}"
 
 # Environment variables for API keys (can be set from GitHub Actions secrets)
 # These will be used to create/update .env file on the VM
@@ -34,7 +38,7 @@ export GCS_BUCKET_U2="${GCS_BUCKET_U2:-}"
 export GCS_PROMPTS_BUCKET="${GCS_PROMPTS_BUCKET:-}"
 export GCS_CLIENT_EMAIL="${GCS_CLIENT_EMAIL:-}"
 export GCS_PRIVATE_KEY="${GCS_PRIVATE_KEY:-}"
-export REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL:-https://syncscribe.app}"
+export REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL:-https://$APP_DOMAIN}"
 # Optional frontend build-time password for Document-Enhanced AI Analysis.
 # Persist it into the VM .env when provided so the later Docker build SSH step can read it.
 export REACT_APP_RAG_PASSWORD="${REACT_APP_RAG_PASSWORD:-}"
@@ -153,6 +157,10 @@ if [ "$DEPLOY_CODE" = "true" ]; then
     GCS_PRIVATE_KEY_B64=$(echo -n "$GCS_PRIVATE_KEY" | base64 -w 0 2>/dev/null || echo -n "$GCS_PRIVATE_KEY" | base64 | tr -d '\n')
     REACT_APP_SERVER_URL_B64=$(echo -n "$REACT_APP_SERVER_URL" | base64 -w 0 2>/dev/null || echo -n "$REACT_APP_SERVER_URL" | base64 | tr -d '\n')
     REACT_APP_RAG_PASSWORD_B64=$(echo -n "$REACT_APP_RAG_PASSWORD" | base64 -w 0 2>/dev/null || echo -n "$REACT_APP_RAG_PASSWORD" | base64 | tr -d '\n')
+    APP_DOMAIN_B64=$(echo -n "$APP_DOMAIN" | base64 -w 0 2>/dev/null || echo -n "$APP_DOMAIN" | base64 | tr -d '\n')
+    APP_WWW_DOMAIN_B64=$(echo -n "$APP_WWW_DOMAIN" | base64 -w 0 2>/dev/null || echo -n "$APP_WWW_DOMAIN" | base64 | tr -d '\n')
+    LEGACY_DOMAIN_B64=$(echo -n "$LEGACY_DOMAIN" | base64 -w 0 2>/dev/null || echo -n "$LEGACY_DOMAIN" | base64 | tr -d '\n')
+    CERTBOT_EMAIL_B64=$(echo -n "$CERTBOT_EMAIL" | base64 -w 0 2>/dev/null || echo -n "$CERTBOT_EMAIL" | base64 | tr -d '\n')
     
     gcloud compute ssh "$VM_NAME" $SSH_OPTS --command "
         # Decode environment variables from base64 (handles special characters safely)
@@ -174,7 +182,11 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         export GCS_PROMPTS_BUCKET=\$(echo '$GCS_PROMPTS_BUCKET_B64' | base64 -d 2>/dev/null || echo '')
         export GCS_CLIENT_EMAIL=\$(echo '$GCS_CLIENT_EMAIL_B64' | base64 -d 2>/dev/null || echo '')
         export GCS_PRIVATE_KEY=\$(echo '$GCS_PRIVATE_KEY_B64' | base64 -d 2>/dev/null || echo '')
-        export REACT_APP_SERVER_URL=\$(echo '$REACT_APP_SERVER_URL_B64' | base64 -d 2>/dev/null || echo 'https://syncscribe.app')
+        export APP_DOMAIN=\$(echo '$APP_DOMAIN_B64' | base64 -d 2>/dev/null || echo 'voiceido.com')
+        export APP_WWW_DOMAIN=\$(echo '$APP_WWW_DOMAIN_B64' | base64 -d 2>/dev/null || echo 'www.voiceido.com')
+        export LEGACY_DOMAIN=\$(echo '$LEGACY_DOMAIN_B64' | base64 -d 2>/dev/null || echo 'syncscribe.app')
+        export CERTBOT_EMAIL=\$(echo '$CERTBOT_EMAIL_B64' | base64 -d 2>/dev/null || echo 'admin@voiceido.com')
+        export REACT_APP_SERVER_URL=\$(echo '$REACT_APP_SERVER_URL_B64' | base64 -d 2>/dev/null || echo \"https://\$APP_DOMAIN\")
         export REACT_APP_RAG_PASSWORD=\$(echo '$REACT_APP_RAG_PASSWORD_B64' | base64 -d 2>/dev/null || echo '')
 
         escape_env_value() {
@@ -328,7 +340,11 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 [ -n \"\$GCS_PROMPTS_BUCKET\" ] && echo \"GCS_PROMPTS_BUCKET=\$GCS_PROMPTS_BUCKET\" || true
                 [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
                 [ -n \"\$GCS_PRIVATE_KEY\" ] && printf 'GCS_PRIVATE_KEY=\"%s\"\n' \"\$(escape_env_value \"\$GCS_PRIVATE_KEY\")\" || true
-                [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
+                [ -n \"\$APP_DOMAIN\" ] && echo \"APP_DOMAIN=\$APP_DOMAIN\" || echo \"APP_DOMAIN=voiceido.com\"
+                [ -n \"\$APP_WWW_DOMAIN\" ] && echo \"APP_WWW_DOMAIN=\$APP_WWW_DOMAIN\" || echo \"APP_WWW_DOMAIN=www.voiceido.com\"
+                [ -n \"\$LEGACY_DOMAIN\" ] && echo \"LEGACY_DOMAIN=\$LEGACY_DOMAIN\" || echo \"LEGACY_DOMAIN=syncscribe.app\"
+                [ -n \"\$CERTBOT_EMAIL\" ] && echo \"CERTBOT_EMAIL=\$CERTBOT_EMAIL\" || echo \"CERTBOT_EMAIL=admin@voiceido.com\"
+                [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://voiceido.com\"
                 [ -n \"\$REACT_APP_RAG_PASSWORD\" ] && printf 'REACT_APP_RAG_PASSWORD=\"%s\"\n' \"\$(escape_env_value \"\$REACT_APP_RAG_PASSWORD\")\" || true
             } > ~/meeting-transcriber/.env &&
             echo '[OK] .env file created from environment variables'
@@ -350,7 +366,7 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 echo '[OK] .env file exists and has content'
                 # Show which keys are set (without revealing values)
                 echo 'Environment variables in .env:'
-                grep -E '^(OPENAI_API_KEY|DEEPGRAM_API_KEY|ASSEMBLYAI_API_KEY|SPEECHMATICS_API_KEY|SPEECHMATICS_MY_SPEAKER_IDS|VOICE_IDENTITY_PROVIDER|REACT_APP_SERVER_URL|REACT_APP_RAG_PASSWORD)=' ~/meeting-transcriber/.env | sed 's/=.*/=***/' || true
+                grep -E '^(OPENAI_API_KEY|DEEPGRAM_API_KEY|ASSEMBLYAI_API_KEY|SPEECHMATICS_API_KEY|SPEECHMATICS_MY_SPEAKER_IDS|VOICE_IDENTITY_PROVIDER|APP_DOMAIN|APP_WWW_DOMAIN|LEGACY_DOMAIN|CERTBOT_EMAIL|REACT_APP_SERVER_URL|REACT_APP_RAG_PASSWORD)=' ~/meeting-transcriber/.env | sed 's/=.*/=***/' || true
             else
                 echo '[X] .env file exists but appears empty or incomplete'
             fi
@@ -427,6 +443,38 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     set -a
     [ -f .env ] && source .env
     set +a
+    APP_DOMAIN="${APP_DOMAIN:-voiceido.com}"
+    APP_WWW_DOMAIN="${APP_WWW_DOMAIN:-www.${APP_DOMAIN}}"
+    LEGACY_DOMAIN="${LEGACY_DOMAIN:-syncscribe.app}"
+    CERTBOT_EMAIL="${CERTBOT_EMAIL:-admin@${APP_DOMAIN}}"
+    REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL:-https://${APP_DOMAIN}}"
+
+    echo "Primary domain: ${APP_DOMAIN}"
+    echo "WWW domain: ${APP_WWW_DOMAIN}"
+    echo "Legacy redirect domain: ${LEGACY_DOMAIN}"
+
+    # The nginx container uses the primary-domain certificate at startup.
+    # Create it before docker-compose up when switching domains.
+    if [ ! -f "/etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem" ]; then
+        echo "Certificate for ${APP_DOMAIN} not found. Requesting Lets Encrypt certificate..." &&
+        sudo apt-get update -qq >/dev/null 2>&1 || true &&
+        sudo apt-get install -y certbot >/dev/null 2>&1 || true &&
+        sudo docker-compose stop client 2>/dev/null || true &&
+        sleep 3 &&
+        if ! sudo certbot certonly --standalone \
+            --non-interactive \
+            --agree-tos \
+            --email "${CERTBOT_EMAIL}" \
+            --preferred-challenges http \
+            -d "${APP_DOMAIN}" \
+            -d "${APP_WWW_DOMAIN}"; then
+            echo "[X] Failed to issue certificate for ${APP_DOMAIN}."
+            echo "    Make sure Hostinger DNS A record @ points to this VM IP and www points to ${APP_DOMAIN}."
+            exit 1
+        fi
+    else
+        echo "[OK] Certificate for ${APP_DOMAIN} already exists"
+    fi
     
     # Rebuild and start services
     echo "Building services..." &&
@@ -524,7 +572,7 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
 echo ""
 echo -e "${YELLOW}Step 6: Checking DNS configuration...${NC}"
 VM_IP=$(gcloud compute instances describe "$VM_NAME" --zone="$ZONE" $PROJECT_OPT --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-DNS_IP=$(dig +short syncscribe.app 2>/dev/null | head -1 || echo "")
+DNS_IP=$(dig +short "$APP_DOMAIN" 2>/dev/null | head -1 || echo "")
 
 if [ -n "$DNS_IP" ] && [ "$VM_IP" = "$DNS_IP" ]; then
     echo -e "${GREEN}[OK] DNS is correctly configured${NC}"
@@ -551,14 +599,16 @@ if [ "$DNS_OK" = false ]; then
     echo "  1. Go to Hostinger DNS management"
     echo "  2. Edit A record for @ (root domain)"
     echo "  3. Change to: $VM_IP"
-    echo "  4. Wait 5-15 minutes"
-    echo "  5. Run: ./scripts/fix-dns.sh to verify"
+    echo "  4. Keep www as CNAME to $APP_DOMAIN"
+    echo "  5. Wait 5-15 minutes"
+    echo "  6. Run: ./scripts/fix-dns.sh $APP_DOMAIN to verify"
 else
     echo -e "${GREEN}[OK] DNS is configured correctly${NC}"
 fi
 echo ""
 echo -e "${BLUE}Your application URL:${NC}"
-echo "  https://syncscribe.app"
+echo "  https://$APP_DOMAIN"
+echo "  Legacy redirect: https://$LEGACY_DOMAIN -> https://$APP_DOMAIN"
 echo ""
 echo -e "${GREEN}All services are running with correct permissions${NC}"
 echo ""

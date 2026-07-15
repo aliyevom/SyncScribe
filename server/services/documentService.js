@@ -150,8 +150,8 @@ class DocumentService {
             headers: {
               'Authorization': `Bearer ${this.openRouterKey}`,
               'Content-Type': 'application/json',
-              'HTTP-Referer': 'https://syncscribe.app',
-              'X-Title': 'SyncScribe Document RAG'
+              'HTTP-Referer': process.env.REACT_APP_SERVER_URL || 'https://voiceido.com',
+              'X-Title': 'VoiceIDO Document RAG'
             }
           }
         );
@@ -588,4 +588,3 @@ class DocumentService {
 }
 
 module.exports = new DocumentService();
-

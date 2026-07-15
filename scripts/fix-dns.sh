@@ -1,18 +1,29 @@
 #!/bin/bash
 # Quick script to check DNS and VM IP match
 
-VM_IP=$(gcloud compute instances describe syncscribe-vm --zone=us-central1-a --format='get(networkInterfaces[0].accessConfigs[0].natIP)')
-DNS_IP=$(dig +short syncscribe.app)
+DOMAIN="${1:-voiceido.com}"
+VM_NAME="${VM_NAME:-syncscribe-vm}"
+ZONE="${ZONE:-us-central1-a}"
+GCP_PROJECT_ID="${GCP_PROJECT_ID:-meeting-trans-443019}"
+
+VM_IP=$(gcloud compute instances describe "$VM_NAME" \
+    --zone="$ZONE" \
+    --project="$GCP_PROJECT_ID" \
+    --format='get(networkInterfaces[0].accessConfigs[0].natIP)' 2>/dev/null || true)
+DNS_IP=$(dig +short "$DOMAIN" | head -1)
 
 echo "======================================"
 echo "  DNS Configuration Check"
 echo "======================================"
 echo ""
 echo "VM External IP:    $VM_IP"
-echo "syncscribe.app:    $DNS_IP"
+echo "$DOMAIN:    $DNS_IP"
 echo ""
 
-if [ "$VM_IP" = "$DNS_IP" ]; then
+if [ -z "$VM_IP" ]; then
+    echo "Could not determine VM IP for $VM_NAME in $GCP_PROJECT_ID/$ZONE"
+    exit 1
+elif [ "$VM_IP" = "$DNS_IP" ]; then
     echo "✅ DNS is correctly configured!"
 else
     echo "❌ DNS MISMATCH!"
@@ -27,4 +38,3 @@ else
     echo "Should point to:      $VM_IP"
 fi
 echo ""
-
