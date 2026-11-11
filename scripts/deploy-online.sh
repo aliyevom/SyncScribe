@@ -13,9 +13,9 @@ NC='\033[0m'
 VM_NAME="${VM_NAME:-syncscribe-vm}"
 ZONE="${ZONE:-us-central1-a}"
 GCP_PROJECT_ID="${GCP_PROJECT_ID:-}"
-APP_DOMAIN="${APP_DOMAIN:-voiceido.com}"
+APP_DOMAIN="${APP_DOMAIN:-syncscribe.app}"
 APP_WWW_DOMAIN="${APP_WWW_DOMAIN:-www.$APP_DOMAIN}"
-LEGACY_DOMAIN="${LEGACY_DOMAIN:-syncscribe.app}"
+LEGACY_DOMAIN="${LEGACY_DOMAIN:-voiceido.com}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:-admin@$APP_DOMAIN}"
 
 # Environment variables for API keys (can be set from GitHub Actions secrets)
@@ -182,10 +182,10 @@ if [ "$DEPLOY_CODE" = "true" ]; then
         export GCS_PROMPTS_BUCKET=\$(echo '$GCS_PROMPTS_BUCKET_B64' | base64 -d 2>/dev/null || echo '')
         export GCS_CLIENT_EMAIL=\$(echo '$GCS_CLIENT_EMAIL_B64' | base64 -d 2>/dev/null || echo '')
         export GCS_PRIVATE_KEY=\$(echo '$GCS_PRIVATE_KEY_B64' | base64 -d 2>/dev/null || echo '')
-        export APP_DOMAIN=\$(echo '$APP_DOMAIN_B64' | base64 -d 2>/dev/null || echo 'voiceido.com')
-        export APP_WWW_DOMAIN=\$(echo '$APP_WWW_DOMAIN_B64' | base64 -d 2>/dev/null || echo 'www.voiceido.com')
-        export LEGACY_DOMAIN=\$(echo '$LEGACY_DOMAIN_B64' | base64 -d 2>/dev/null || echo 'syncscribe.app')
-        export CERTBOT_EMAIL=\$(echo '$CERTBOT_EMAIL_B64' | base64 -d 2>/dev/null || echo 'admin@voiceido.com')
+        export APP_DOMAIN=\$(echo '$APP_DOMAIN_B64' | base64 -d 2>/dev/null || echo 'syncscribe.app')
+        export APP_WWW_DOMAIN=\$(echo '$APP_WWW_DOMAIN_B64' | base64 -d 2>/dev/null || echo 'www.syncscribe.app')
+        export LEGACY_DOMAIN=\$(echo '$LEGACY_DOMAIN_B64' | base64 -d 2>/dev/null || echo 'voiceido.com')
+        export CERTBOT_EMAIL=\$(echo '$CERTBOT_EMAIL_B64' | base64 -d 2>/dev/null || echo 'admin@syncscribe.app')
         export REACT_APP_SERVER_URL=\$(echo '$REACT_APP_SERVER_URL_B64' | base64 -d 2>/dev/null || echo \"https://\$APP_DOMAIN\")
         export REACT_APP_RAG_PASSWORD=\$(echo '$REACT_APP_RAG_PASSWORD_B64' | base64 -d 2>/dev/null || echo '')
 
@@ -340,11 +340,11 @@ if [ "$DEPLOY_CODE" = "true" ]; then
                 [ -n \"\$GCS_PROMPTS_BUCKET\" ] && echo \"GCS_PROMPTS_BUCKET=\$GCS_PROMPTS_BUCKET\" || true
                 [ -n \"\$GCS_CLIENT_EMAIL\" ] && echo \"GCS_CLIENT_EMAIL=\$GCS_CLIENT_EMAIL\" || true
                 [ -n \"\$GCS_PRIVATE_KEY\" ] && printf 'GCS_PRIVATE_KEY=\"%s\"\n' \"\$(escape_env_value \"\$GCS_PRIVATE_KEY\")\" || true
-                [ -n \"\$APP_DOMAIN\" ] && echo \"APP_DOMAIN=\$APP_DOMAIN\" || echo \"APP_DOMAIN=voiceido.com\"
-                [ -n \"\$APP_WWW_DOMAIN\" ] && echo \"APP_WWW_DOMAIN=\$APP_WWW_DOMAIN\" || echo \"APP_WWW_DOMAIN=www.voiceido.com\"
-                [ -n \"\$LEGACY_DOMAIN\" ] && echo \"LEGACY_DOMAIN=\$LEGACY_DOMAIN\" || echo \"LEGACY_DOMAIN=syncscribe.app\"
-                [ -n \"\$CERTBOT_EMAIL\" ] && echo \"CERTBOT_EMAIL=\$CERTBOT_EMAIL\" || echo \"CERTBOT_EMAIL=admin@voiceido.com\"
-                [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://voiceido.com\"
+                [ -n \"\$APP_DOMAIN\" ] && echo \"APP_DOMAIN=\$APP_DOMAIN\" || echo \"APP_DOMAIN=syncscribe.app\"
+                [ -n \"\$APP_WWW_DOMAIN\" ] && echo \"APP_WWW_DOMAIN=\$APP_WWW_DOMAIN\" || echo \"APP_WWW_DOMAIN=www.syncscribe.app\"
+                [ -n \"\$LEGACY_DOMAIN\" ] && echo \"LEGACY_DOMAIN=\$LEGACY_DOMAIN\" || echo \"LEGACY_DOMAIN=voiceido.com\"
+                [ -n \"\$CERTBOT_EMAIL\" ] && echo \"CERTBOT_EMAIL=\$CERTBOT_EMAIL\" || echo \"CERTBOT_EMAIL=admin@syncscribe.app\"
+                [ -n \"\$REACT_APP_SERVER_URL\" ] && echo \"REACT_APP_SERVER_URL=\$REACT_APP_SERVER_URL\" || echo \"REACT_APP_SERVER_URL=https://syncscribe.app\"
                 [ -n \"\$REACT_APP_RAG_PASSWORD\" ] && printf 'REACT_APP_RAG_PASSWORD=\"%s\"\n' \"\$(escape_env_value \"\$REACT_APP_RAG_PASSWORD\")\" || true
             } > ~/meeting-transcriber/.env &&
             echo '[OK] .env file created from environment variables'
@@ -443,9 +443,9 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     set -a
     [ -f .env ] && source .env
     set +a
-    APP_DOMAIN="${APP_DOMAIN:-voiceido.com}"
+    APP_DOMAIN="${APP_DOMAIN:-syncscribe.app}"
     APP_WWW_DOMAIN="${APP_WWW_DOMAIN:-www.${APP_DOMAIN}}"
-    LEGACY_DOMAIN="${LEGACY_DOMAIN:-syncscribe.app}"
+    LEGACY_DOMAIN="${LEGACY_DOMAIN:-voiceido.com}"
     CERTBOT_EMAIL="${CERTBOT_EMAIL:-admin@${APP_DOMAIN}}"
     REACT_APP_SERVER_URL="${REACT_APP_SERVER_URL:-https://${APP_DOMAIN}}"
 

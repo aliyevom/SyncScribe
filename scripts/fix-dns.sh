@@ -1,7 +1,7 @@
 #!/bin/bash
 # Quick script to check DNS and VM IP match
 
-DOMAIN="${1:-voiceido.com}"
+DOMAIN="${1:-syncscribe.app}"
 VM_NAME="${VM_NAME:-syncscribe-vm}"
 ZONE="${ZONE:-us-central1-a}"
 GCP_PROJECT_ID="${GCP_PROJECT_ID:-meeting-trans-443019}"

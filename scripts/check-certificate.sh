@@ -5,7 +5,7 @@
 
 set -e
 
-DOMAIN="${1:-voiceido.com}"
+DOMAIN="${1:-syncscribe.app}"
 
 echo "======================================"
 echo "  SSL Certificate Status Check"

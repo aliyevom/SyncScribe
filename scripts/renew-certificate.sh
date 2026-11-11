@@ -12,7 +12,7 @@ YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-DOMAIN="${1:-voiceido.com}"
+DOMAIN="${1:-syncscribe.app}"
 
 echo -e "${BLUE}======================================${NC}"
 echo -e "${BLUE}  SSL Certificate Renewal${NC}"

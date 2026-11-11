@@ -14,11 +14,11 @@ Add these secrets to your GitHub repository:
 
 ### Optional Variables
 **Settings > Secrets and variables > Actions > Variables**
-- `APP_DOMAIN` - Primary app domain (defaults to `voiceido.com`)
-- `APP_WWW_DOMAIN` - WWW app domain (defaults to `www.voiceido.com`)
-- `LEGACY_DOMAIN` - Legacy redirect domain (defaults to `syncscribe.app`)
-- `CERTBOT_EMAIL` - Let's Encrypt account email (defaults to `admin@voiceido.com`)
-- `REACT_APP_SERVER_URL` - Server URL (defaults to `https://voiceido.com`)
+- `APP_DOMAIN` - Primary app domain (defaults to `syncscribe.app`)
+- `APP_WWW_DOMAIN` - WWW app domain (defaults to `www.syncscribe.app`)
+- `LEGACY_DOMAIN` - Legacy redirect domain (defaults to `voiceido.com` until OCR takes that apex)
+- `CERTBOT_EMAIL` - Let's Encrypt account email (defaults to `admin@syncscribe.app`)
+- `REACT_APP_SERVER_URL` - Server URL (defaults to `https://syncscribe.app`)
 
 ## How to Add Secrets
 
@@ -55,7 +55,7 @@ Environment variables in .env:
 OPENAI_API_KEY=***
 DEEPGRAM_API_KEY=***
 ASSEMBLYAI_API_KEY=***
-REACT_APP_SERVER_URL=https://voiceido.com
+REACT_APP_SERVER_URL=https://syncscribe.app
 ```
 
 ## Troubleshooting
