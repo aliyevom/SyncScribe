@@ -454,8 +454,11 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
     echo "Legacy redirect domain: ${LEGACY_DOMAIN}"
 
     # The nginx container uses the primary-domain certificate at startup.
-    # Create it before docker-compose up when switching domains.
-    if [ ! -f "/etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem" ]; then
+    # live/ is root-only (0700), so test with sudo. An existing apex cert is enough;
+    # www is optional and must use --expand if we add it later.
+    if sudo test -f "/etc/letsencrypt/live/${APP_DOMAIN}/fullchain.pem"; then
+        echo "[OK] Certificate for ${APP_DOMAIN} already exists"
+    else
         echo "Certificate for ${APP_DOMAIN} not found. Requesting Lets Encrypt certificate..." &&
         sudo apt-get update -qq >/dev/null 2>&1 || true &&
         sudo apt-get install -y certbot >/dev/null 2>&1 || true &&
@@ -464,6 +467,8 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
         if ! sudo certbot certonly --standalone \
             --non-interactive \
             --agree-tos \
+            --expand \
+            --cert-name "${APP_DOMAIN}" \
             --email "${CERTBOT_EMAIL}" \
             --preferred-challenges http \
             -d "${APP_DOMAIN}" \
@@ -472,8 +477,6 @@ gcloud compute ssh "$VM_NAME" $SSH_OPTS --command '
             echo "    Make sure Hostinger DNS A record @ points to this VM IP and www points to ${APP_DOMAIN}."
             exit 1
         fi
-    else
-        echo "[OK] Certificate for ${APP_DOMAIN} already exists"
     fi
     
     # Rebuild and start services
