@@ -10,11 +10,11 @@ name: SyncScribe VM Control
 # 1. Add GitHub Repository Variables (Settings > Secrets and variables > Actions > Variables):
 #    - VM_NAME: syncscribe-vm (optional, has default)
 #    - VM_ZONE: us-central1-a (optional, has default)
-#    - APP_DOMAIN: voiceido.com (optional, has default)
-#    - APP_WWW_DOMAIN: www.voiceido.com (optional, has default)
-#    - LEGACY_DOMAIN: syncscribe.app (optional, has default)
-#    - CERTBOT_EMAIL: admin@voiceido.com (optional, has default)
-#    - REACT_APP_SERVER_URL: https://voiceido.com (optional, has default)
+#    - APP_DOMAIN: syncscribe.app (optional, has default)
+#    - APP_WWW_DOMAIN: www.syncscribe.app (optional, has default)
+#    - LEGACY_DOMAIN: voiceido.com (optional, has default; VM 301 until DNS moves to Firebase)
+#    - CERTBOT_EMAIL: admin@syncscribe.app (optional, has default)
+#    - REACT_APP_SERVER_URL: https://syncscribe.app (optional, has default)
 #    - GCS_BUCKET_N1: syncscribe-n1 (REQUIRED - update from old GCS_NG_BUCKET)
 #    - GCS_BUCKET_U1: syncscribe-u1 (REQUIRED - update from old GCS_UKG_BUCKET)
 #
@@ -220,11 +220,11 @@ jobs:
           GCS_BUCKET_U1: ${{ vars.GCS_BUCKET_U1 }}
           GCS_BUCKET_U2: ${{ vars.GCS_BUCKET_U2 }}
           GCS_PROMPTS_BUCKET: ${{ vars.GCS_PROMPTS_BUCKET }}
-          APP_DOMAIN: ${{ vars.APP_DOMAIN || 'voiceido.com' }}
-          APP_WWW_DOMAIN: ${{ vars.APP_WWW_DOMAIN || 'www.voiceido.com' }}
-          LEGACY_DOMAIN: ${{ vars.LEGACY_DOMAIN || 'syncscribe.app' }}
-          CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL || 'admin@voiceido.com' }}
-          REACT_APP_SERVER_URL: ${{ vars.REACT_APP_SERVER_URL || 'https://voiceido.com' }}
+          APP_DOMAIN: ${{ vars.APP_DOMAIN || 'syncscribe.app' }}
+          APP_WWW_DOMAIN: ${{ vars.APP_WWW_DOMAIN || 'www.syncscribe.app' }}
+          LEGACY_DOMAIN: ${{ vars.LEGACY_DOMAIN || 'voiceido.com' }}
+          CERTBOT_EMAIL: ${{ vars.CERTBOT_EMAIL || 'admin@syncscribe.app' }}
+          REACT_APP_SERVER_URL: ${{ vars.REACT_APP_SERVER_URL || 'https://syncscribe.app' }}
           # Optional: Set RAG password for specific environments via secrets
           REACT_APP_RAG_PASSWORD: ${{ secrets.REACT_APP_RAG_PASSWORD }}
         run: |
@@ -273,7 +273,7 @@ jobs:
           ZONE: ${{ env.VM_ZONE }}
           GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
         run: |
-          APP_DOMAIN="${{ vars.APP_DOMAIN || 'voiceido.com' }}"
+          APP_DOMAIN="${{ vars.APP_DOMAIN || 'syncscribe.app' }}"
           echo "Renewing SSL certificate for $APP_DOMAIN..."
           export VM_NAME="$VM_NAME"
           export ZONE="$ZONE"
@@ -357,7 +357,7 @@ jobs:
           
           if [ -n "$VM_IP" ]; then
             echo "VM IP: $VM_IP"
-            APP_DOMAIN="${{ vars.APP_DOMAIN || 'voiceido.com' }}"
+            APP_DOMAIN="${{ vars.APP_DOMAIN || 'syncscribe.app' }}"
             DNS_IP=$(dig +short "$APP_DOMAIN" 2>/dev/null | head -1 || echo "")
             if [ -n "$DNS_IP" ]; then
               if [ "$VM_IP" = "$DNS_IP" ]; then

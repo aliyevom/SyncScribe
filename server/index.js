@@ -26,7 +26,7 @@ const openRouterClient = new OpenAI({
   apiKey: process.env.OPENROUTER_API_KEY,
   baseURL: 'https://openrouter.ai/api/v1',
   defaultHeaders: {
-    'HTTP-Referer': process.env.REACT_APP_SERVER_URL || 'https://voiceido.com',
+    'HTTP-Referer': process.env.REACT_APP_SERVER_URL || 'https://syncscribe.app',
     'X-Title': 'VoiceIDO AI Analysis'
   }
 });

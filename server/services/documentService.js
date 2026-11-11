@@ -150,7 +150,7 @@ class DocumentService {
             headers: {
               'Authorization': `Bearer ${this.openRouterKey}`,
               'Content-Type': 'application/json',
-              'HTTP-Referer': process.env.REACT_APP_SERVER_URL || 'https://voiceido.com',
+              'HTTP-Referer': process.env.REACT_APP_SERVER_URL || 'https://syncscribe.app',
               'X-Title': 'VoiceIDO Document RAG'
             }
           }
