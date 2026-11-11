@@ -1,4 +1,20 @@
 name: SyncScribe VM Control
+run-name: >-
+  SyncScribe VM Control | ${{
+    github.event_name == 'workflow_dispatch'
+      && (
+        inputs.action == 'renew-certificate' && 'Renew Cert'
+        || inputs.action == 'deploy-online' && 'Deploy Online'
+        || inputs.action == 'deploy-offline' && 'Deploy Offline'
+        || inputs.action
+      )
+      || (
+        github.event.schedule == '50 12 * * 1-5' && 'Deploy Online'
+        || github.event.schedule == '30 22 * * 1-5' && 'Deploy Offline'
+        || github.event.schedule == '0 2 1 * *' && 'Renew Cert'
+        || 'Scheduled'
+      )
+  }}
 
 # AUTOMATED CERTIFICATE RENEWAL:
 # This workflow automatically renews SSL certificates monthly via scheduled cron job.
